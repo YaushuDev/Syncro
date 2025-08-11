@@ -48,12 +48,32 @@ class EmailConfigManager:
                 f.write(key)
             return key
 
+    def _clean_string(self, text):
+        """Limpia caracteres problemáticos de un string"""
+        if not isinstance(text, str):
+            return text
+        # Reemplazar caracteres no-ASCII problemáticos
+        text = text.replace('\xa0', ' ')  # Espacio no separable
+        text = text.replace('\u00a0', ' ')  # Otra forma del espacio no separable
+        # Normalizar espacios
+        text = ' '.join(text.split())
+        return text.strip()
+
     def _encrypt_data(self, data):
         """Encripta los datos"""
         key = self._get_or_create_key()
         fernet = Fernet(key)
-        json_str = json.dumps(data)
-        encrypted_data = fernet.encrypt(json_str.encode())
+
+        # Limpiar todos los strings en el diccionario
+        clean_data = {}
+        for key_name, value in data.items():
+            if isinstance(value, str):
+                clean_data[key_name] = self._clean_string(value)
+            else:
+                clean_data[key_name] = value
+
+        json_str = json.dumps(clean_data, ensure_ascii=True)
+        encrypted_data = fernet.encrypt(json_str.encode('utf-8'))
         return encrypted_data
 
     def _decrypt_data(self, encrypted_data):
@@ -62,7 +82,7 @@ class EmailConfigManager:
             key = self._get_or_create_key()
             fernet = Fernet(key)
             decrypted_data = fernet.decrypt(encrypted_data)
-            return json.loads(decrypted_data.decode())
+            return json.loads(decrypted_data.decode('utf-8'))
         except Exception:
             return None
 
@@ -104,8 +124,13 @@ class EmailConfigManager:
 
     def validate_email(self, email):
         """Valida formato de email"""
+        if not email:
+            return False
+
+        # Limpiar el email primero
+        clean_email = self._clean_string(email)
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        return re.match(pattern, email) is not None
+        return re.match(pattern, clean_email) is not None
 
 
 class EmailService:
@@ -119,16 +144,27 @@ class EmailService:
         }
         self.config = {}
 
+    def _clean_string(self, text):
+        """Limpia caracteres problemáticos de un string"""
+        if not isinstance(text, str):
+            return text
+        # Reemplazar caracteres no-ASCII problemáticos
+        text = text.replace('\xa0', ' ')  # Espacio no separable
+        text = text.replace('\u00a0', ' ')  # Otra forma del espacio no separable
+        # Normalizar espacios
+        text = ' '.join(text.split())
+        return text.strip()
+
     def set_configuration(self, provider, email, password, custom_server=None, custom_port=None):
         """Configura el servicio de email"""
         self.config = {
-            "provider": provider,
-            "email": email,
-            "password": password
+            "provider": self._clean_string(provider),
+            "email": self._clean_string(email),
+            "password": self._clean_string(password)
         }
 
         if provider == "Personalizado" and custom_server and custom_port:
-            self.config["smtp_server"] = custom_server
+            self.config["smtp_server"] = self._clean_string(custom_server)
             self.config["port"] = custom_port
         elif provider in self.smtp_configs:
             self.config["smtp_server"] = self.smtp_configs[provider]["server"]
@@ -140,14 +176,29 @@ class EmailService:
             if not self.config:
                 return False, "No hay configuración establecida"
 
+            # Usar encoding explícito para evitar problemas de caracteres
             server = smtplib.SMTP(self.config["smtp_server"], self.config["port"])
             server.starttls()
-            server.login(self.config["email"], self.config["password"])
+
+            # Asegurar que email y password estén limpios
+            clean_email = self._clean_string(self.config["email"])
+            clean_password = self._clean_string(self.config["password"])
+
+            server.login(clean_email, clean_password)
             server.quit()
 
             return True, "Conexión exitosa"
+        except UnicodeEncodeError as e:
+            return False, f"Error de codificación: Verifique que no haya caracteres especiales en email o contraseña"
+        except smtplib.SMTPAuthenticationError:
+            return False, "Error de autenticación: Verifique email y contraseña"
+        except smtplib.SMTPConnectError:
+            return False, "Error de conexión: No se puede conectar al servidor SMTP"
         except Exception as e:
-            return False, str(e)
+            error_msg = str(e)
+            # Limpiar mensaje de error también
+            clean_error = self._clean_string(error_msg)
+            return False, clean_error
 
     def send_email(self, to_email, cc_emails, subject, body):
         """Envía un email"""
@@ -155,29 +206,46 @@ class EmailService:
             if not self.config:
                 return False, "No hay configuración establecida"
 
+            # Limpiar todos los strings de entrada
+            clean_to_email = self._clean_string(to_email)
+            clean_subject = self._clean_string(subject)
+            clean_body = self._clean_string(body)
+
+            clean_cc_emails = []
+            if cc_emails:
+                clean_cc_emails = [self._clean_string(cc) for cc in cc_emails if cc.strip()]
+
             # Crear mensaje usando las importaciones corregidas
             msg = email_multipart.MIMEMultipart()
-            msg['From'] = self.config["email"]
-            msg['To'] = to_email
-            if cc_emails:
-                msg['Cc'] = ', '.join(cc_emails)
-            msg['Subject'] = subject
+            msg['From'] = self._clean_string(self.config["email"])
+            msg['To'] = clean_to_email
+            if clean_cc_emails:
+                msg['Cc'] = ', '.join(clean_cc_emails)
+            msg['Subject'] = clean_subject
 
-            # Adjuntar el cuerpo del mensaje
-            msg.attach(email_text.MIMEText(body, 'plain'))
+            # Adjuntar el cuerpo del mensaje con encoding específico
+            msg.attach(email_text.MIMEText(clean_body, 'plain', 'utf-8'))
 
             # Conectar y enviar
             server = smtplib.SMTP(self.config["smtp_server"], self.config["port"])
             server.starttls()
-            server.login(self.config["email"], self.config["password"])
 
-            recipients = [to_email] + (cc_emails if cc_emails else [])
-            server.sendmail(self.config["email"], recipients, msg.as_string())
+            clean_email = self._clean_string(self.config["email"])
+            clean_password = self._clean_string(self.config["password"])
+
+            server.login(clean_email, clean_password)
+
+            recipients = [clean_to_email] + clean_cc_emails
+            server.sendmail(clean_email, recipients, msg.as_string())
             server.quit()
 
             return True, "Email enviado exitosamente"
+        except UnicodeEncodeError as e:
+            return False, f"Error de codificación: Verifique que no haya caracteres especiales en el contenido"
         except Exception as e:
-            return False, str(e)
+            error_msg = str(e)
+            clean_error = self._clean_string(error_msg)
+            return False, clean_error
 
 
 class EmailTab:
@@ -252,6 +320,30 @@ class EmailTab:
         # Crear contenido
         self._create_left_column_collapsible(left_column)
         self._create_right_column(right_column)
+
+    def _clean_entry_value(self, entry_widget):
+        """Limpia el valor de un Entry widget"""
+        value = entry_widget.get()
+        if not isinstance(value, str):
+            return value
+        # Reemplazar caracteres problemáticos
+        value = value.replace('\xa0', ' ')  # Espacio no separable
+        value = value.replace('\u00a0', ' ')  # Otra forma del espacio no separable
+        # Normalizar espacios
+        value = ' '.join(value.split())
+        return value.strip()
+
+    def _clean_text_value(self, text_widget):
+        """Limpia el valor de un Text widget"""
+        value = text_widget.get('1.0', 'end-1c')
+        if not isinstance(value, str):
+            return value
+        # Reemplazar caracteres problemáticos
+        value = value.replace('\xa0', ' ')  # Espacio no separable
+        value = value.replace('\u00a0', ' ')  # Otra forma del espacio no separable
+        # Normalizar espacios y saltos de línea
+        lines = [' '.join(line.split()) for line in value.split('\n')]
+        return '\n'.join(lines).strip()
 
     def _create_left_column_collapsible(self, parent):
         """Crea la columna izquierda con secciones colapsables"""
@@ -696,12 +788,12 @@ class EmailTab:
             return
 
         try:
-            # Obtener datos
+            # Obtener datos limpiando caracteres problemáticos
             provider = self.widgets['provider_var'].get()
-            email = self.widgets['email_entry'].get().strip()
-            password = self.widgets['password_entry'].get().strip()
-            main_recipient = self.widgets['main_recipient'].get().strip()
-            cc_recipients = self.widgets['cc_recipients'].get('1.0', 'end-1c').strip()
+            email = self._clean_entry_value(self.widgets['email_entry'])
+            password = self._clean_entry_value(self.widgets['password_entry'])
+            main_recipient = self._clean_entry_value(self.widgets['main_recipient'])
+            cc_recipients = self._clean_text_value(self.widgets['cc_recipients'])
 
             # Configurar datos de guardado
             config_data = {
@@ -713,8 +805,8 @@ class EmailTab:
             }
 
             if provider == "Personalizado":
-                config_data["smtp_server"] = self.widgets['smtp_entry'].get().strip()
-                config_data["port"] = int(self.widgets['port_entry'].get().strip())
+                config_data["smtp_server"] = self._clean_entry_value(self.widgets['smtp_entry'])
+                config_data["port"] = int(self._clean_entry_value(self.widgets['port_entry']))
 
             # Guardar
             success = self.config_manager.save_email_config(config_data)
@@ -764,8 +856,8 @@ class EmailTab:
 
     def _validate_fields(self):
         """Valida campos básicos"""
-        email = self.widgets['email_entry'].get().strip()
-        password = self.widgets['password_entry'].get().strip()
+        email = self._clean_entry_value(self.widgets['email_entry'])
+        password = self._clean_entry_value(self.widgets['password_entry'])
 
         if not email:
             messagebox.showerror("Campo Requerido", "El campo email es obligatorio")
@@ -790,8 +882,8 @@ class EmailTab:
 
         provider = self.widgets['provider_var'].get()
         if provider == "Personalizado":
-            smtp = self.widgets['smtp_entry'].get().strip()
-            port = self.widgets['port_entry'].get().strip()
+            smtp = self._clean_entry_value(self.widgets['smtp_entry'])
+            port = self._clean_entry_value(self.widgets['port_entry'])
 
             if not smtp:
                 messagebox.showerror("Campo Requerido",
@@ -824,7 +916,7 @@ class EmailTab:
 
     def _validate_recipients(self):
         """Valida destinatarios"""
-        main_recipient = self.widgets['main_recipient'].get().strip()
+        main_recipient = self._clean_entry_value(self.widgets['main_recipient'])
 
         if not main_recipient:
             messagebox.showerror("Campo Requerido", "El destinatario principal es obligatorio")
@@ -841,7 +933,7 @@ class EmailTab:
             return False
 
         # Validar CCs si existen
-        cc_text = self.widgets['cc_recipients'].get('1.0', 'end-1c').strip()
+        cc_text = self._clean_text_value(self.widgets['cc_recipients'])
         if cc_text:
             cc_list = [cc.strip() for cc in cc_text.replace('\n', ',').split(',') if cc.strip()]
             for cc in cc_list:
@@ -856,12 +948,12 @@ class EmailTab:
     def _configure_email_service(self):
         """Configura el servicio de email"""
         provider = self.widgets['provider_var'].get()
-        email = self.widgets['email_entry'].get().strip()
-        password = self.widgets['password_entry'].get().strip()
+        email = self._clean_entry_value(self.widgets['email_entry'])
+        password = self._clean_entry_value(self.widgets['password_entry'])
 
         if provider == "Personalizado":
-            custom_server = self.widgets['smtp_entry'].get().strip()
-            custom_port = int(self.widgets['port_entry'].get().strip())
+            custom_server = self._clean_entry_value(self.widgets['smtp_entry'])
+            custom_port = int(self._clean_entry_value(self.widgets['port_entry']))
             self.email_service.set_configuration(provider, email, password, custom_server, custom_port)
         else:
             self.email_service.set_configuration(provider, email, password)
@@ -935,8 +1027,8 @@ class EmailTab:
     def get_configured_recipients(self):
         """Obtiene destinatarios configurados"""
         try:
-            main = self.widgets['main_recipient'].get().strip()
-            cc_text = self.widgets['cc_recipients'].get('1.0', 'end-1c').strip()
+            main = self._clean_entry_value(self.widgets['main_recipient'])
+            cc_text = self._clean_text_value(self.widgets['cc_recipients'])
             cc_list = [cc.strip() for cc in cc_text.replace('\n', ',').split(',') if cc.strip()]
             return main, cc_list
         except:

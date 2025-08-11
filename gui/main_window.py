@@ -5,7 +5,6 @@ Ventana principal de la interfaz gráfica de Syncro Bot.
 Gestiona la configuración de la ventana y la creación del sistema de pestañas.
 """
 
-import tkinter as tk
 from tkinter import ttk
 from .tabs.automation_tab import AutomationTab
 from .tabs.email_tab import EmailTab
