@@ -1,15 +1,16 @@
-#automation_tab.py
+# automation_tab.py
 # Ubicación: /syncro_bot/gui/tabs/automation_tab.py
 """
 Pestaña de automatización para Syncro Bot.
-Proporciona la interfaz para configurar y gestionar tareas automatizadas.
-Incluye botones de control y navegación automática a páginas web.
+Proporciona la interfaz para configurar y gestionar tareas automatizadas
+con manejo mejorado de hilos y cierre seguro.
 """
 
 import tkinter as tk
 from tkinter import ttk, messagebox
 import webbrowser
 import threading
+import time
 
 
 class AutomationService:
@@ -18,16 +19,18 @@ class AutomationService:
     def __init__(self):
         self.is_running = False
         self.target_url = "https://fieldservice.cabletica.com/dispatchFS/"
+        self._lock = threading.Lock()
 
     def start_automation(self):
         """Inicia el proceso de automatización"""
         try:
-            if self.is_running:
-                return False, "La automatización ya está en ejecución"
+            with self._lock:
+                if self.is_running:
+                    return False, "La automatización ya está en ejecución"
 
-            webbrowser.open(self.target_url)
-            self.is_running = True
-            return True, "Automatización iniciada correctamente"
+                webbrowser.open(self.target_url)
+                self.is_running = True
+                return True, "Automatización iniciada correctamente"
 
         except Exception as e:
             return False, f"Error al iniciar automatización: {str(e)}"
@@ -35,18 +38,25 @@ class AutomationService:
     def pause_automation(self):
         """Pausa el proceso de automatización"""
         try:
-            if not self.is_running:
-                return False, "La automatización no está en ejecución"
+            with self._lock:
+                if not self.is_running:
+                    return False, "La automatización no está en ejecución"
 
-            self.is_running = False
-            return True, "Automatización pausada correctamente"
+                self.is_running = False
+                return True, "Automatización pausada correctamente"
 
         except Exception as e:
             return False, f"Error al pausar automatización: {str(e)}"
 
     def get_status(self):
         """Obtiene el estado actual de la automatización"""
-        return self.is_running
+        with self._lock:
+            return self.is_running
+
+    def stop_all(self):
+        """Detiene todas las operaciones de automatización"""
+        with self._lock:
+            self.is_running = False
 
 
 class AutomationTab:
@@ -70,6 +80,7 @@ class AutomationTab:
 
         self.automation_service = AutomationService()
         self.widgets = {}
+        self._is_closing = False
         self.create_tab()
 
     def create_tab(self):
@@ -115,7 +126,7 @@ class AutomationTab:
         spacer.grid(row=1, column=0, sticky='nsew')
 
     def _create_right_column(self, parent):
-        """Crea el contenido de la columna derecha sin modal de información"""
+        """Crea el contenido de la columna derecha"""
         parent.grid_rowconfigure(0, weight=0)
         parent.grid_rowconfigure(1, weight=1)
         parent.grid_columnconfigure(0, weight=1)
@@ -216,33 +227,51 @@ class AutomationTab:
 
     def _start_automation(self):
         """Inicia la automatización"""
+        if self._is_closing:
+            return
 
         def start_thread():
             try:
-                success, message = self.automation_service.start_automation()
-                self.frame.after(0, lambda: self._handle_start_result(success, message))
-            except Exception as e:
-                self.frame.after(0, lambda: self._handle_start_result(False, str(e)))
+                if self._is_closing:
+                    return
 
-        threading.Thread(target=start_thread, daemon=True).start()
+                success, message = self.automation_service.start_automation()
+
+                if not self._is_closing:
+                    self.frame.after(0, lambda: self._handle_start_result(success, message))
+            except Exception as e:
+                if not self._is_closing:
+                    self.frame.after(0, lambda: self._handle_start_result(False, str(e)))
+
+        thread = threading.Thread(target=start_thread, daemon=True)
+        thread.start()
         self.widgets['start_button'].configure(state='disabled', text='Iniciando...')
 
     def _pause_automation(self):
         """Pausa la automatización"""
+        if self._is_closing:
+            return
+
         try:
             success, message = self.automation_service.pause_automation()
             if success:
                 self._update_automation_status("Pausada", self.colors['warning'])
                 self.widgets['start_button'].configure(state='normal', text='▶️ Iniciar Automatización')
                 self.widgets['pause_button'].configure(state='disabled')
-                messagebox.showinfo("Éxito", message)
+                if not self._is_closing:
+                    messagebox.showinfo("Éxito", message)
             else:
-                messagebox.showerror("Error", message)
+                if not self._is_closing:
+                    messagebox.showerror("Error", message)
         except Exception as e:
-            messagebox.showerror("Error", f"Error al pausar automatización:\n{str(e)}")
+            if not self._is_closing:
+                messagebox.showerror("Error", f"Error al pausar automatización:\n{str(e)}")
 
     def _handle_start_result(self, success, message):
         """Maneja el resultado del inicio de automatización"""
+        if self._is_closing:
+            return
+
         if success:
             self._update_automation_status("En ejecución", self.colors['success'])
             self.widgets['start_button'].configure(state='disabled', text='▶️ Iniciando...')
@@ -256,8 +285,18 @@ class AutomationTab:
 
     def _update_automation_status(self, text, color):
         """Actualiza el estado de la automatización"""
-        self.widgets['automation_status'].configure(text=text, fg=color)
+        if not self._is_closing and hasattr(self, 'widgets') and 'automation_status' in self.widgets:
+            try:
+                self.widgets['automation_status'].configure(text=text, fg=color)
+            except:
+                pass
 
     def get_automation_status(self):
         """Obtiene el estado actual de la automatización"""
         return self.automation_service.get_status()
+
+    def cleanup(self):
+        """Limpia recursos al cerrar la pestaña"""
+        self._is_closing = True
+        self.automation_service.stop_all()
+        time.sleep(0.05)  # Pequeña pausa para que los hilos terminen
