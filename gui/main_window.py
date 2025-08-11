@@ -10,6 +10,7 @@ from tkinter import ttk
 import time
 from .tabs.automation_tab import AutomationTab
 from .tabs.email_tab import EmailTab
+from .tabs.profiles_tab import ProfilesTab
 from .tabs.registro_tab import RegistroTab
 
 
@@ -42,6 +43,7 @@ class MainWindow:
 
         # Inicializar las pestañas
         self.automation_tab = AutomationTab(self.notebook)
+        self.profiles_tab = ProfilesTab(self.notebook)
         self.email_tab = EmailTab(self.notebook)
         self.registro_tab = RegistroTab(self.notebook)
 
@@ -79,6 +81,10 @@ class MainWindow:
                 if hasattr(self.email_tab, 'cleanup'):
                     self.email_tab.cleanup()
 
+            if hasattr(self, 'profiles_tab') and self.profiles_tab:
+                if hasattr(self.profiles_tab, 'cleanup'):
+                    self.profiles_tab.cleanup()
+
             # Pequeña pausa para permitir que los hilos daemon se terminen
             time.sleep(0.1)
 
@@ -95,6 +101,10 @@ class MainWindow:
     def get_automation_tab(self):
         """Retorna la instancia de la pestaña de automatización"""
         return self.automation_tab if hasattr(self, 'automation_tab') else None
+
+    def get_profiles_tab(self):
+        """Retorna la instancia de la pestaña de perfiles"""
+        return self.profiles_tab if hasattr(self, 'profiles_tab') else None
 
     def get_email_tab(self):
         """Retorna la instancia de la pestaña de email"""
