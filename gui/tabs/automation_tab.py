@@ -1,6 +1,9 @@
 # automation_tab.py
 # Ubicación: /syncro_bot/gui/tabs/automation_tab.py
-# Syncro Bot - Pestaña de Automatización
+"""
+Pestaña de automatización para Syncro Bot.
+Proporciona la interfaz para configurar y gestionar tareas automatizadas.
+"""
 
 import tkinter as tk
 from tkinter import ttk

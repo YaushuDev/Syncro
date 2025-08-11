@@ -1,6 +1,9 @@
 # registro_tab.py
 # Ubicación: /syncro_bot/gui/tabs/registro_tab.py
-# Syncro Bot - Pestaña de Registro
+"""
+Pestaña de registro para Syncro Bot.
+Proporciona funcionalidad para visualizar y gestionar logs del sistema.
+"""
 
 import tkinter as tk
 from tkinter import ttk

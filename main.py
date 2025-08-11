@@ -1,6 +1,9 @@
 # main.py
 # Ubicación: /syncro_bot/main.py
-# Syncro Bot - Punto de entrada principal
+"""
+Punto de entrada principal de Syncro Bot.
+Inicializa la aplicación GUI y ejecuta el bucle principal de la interfaz.
+"""
 
 from gui.main_window import MainWindow
 import tkinter as tk

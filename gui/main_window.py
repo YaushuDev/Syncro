@@ -1,6 +1,9 @@
 # main_window.py
 # Ubicación: /syncro_bot/gui/main_window.py
-# Syncro Bot - Ventana principal de la interfaz gráfica
+"""
+Ventana principal de la interfaz gráfica de Syncro Bot.
+Gestiona la configuración de la ventana y la creación del sistema de pestañas.
+"""
 
 import tkinter as tk
 from tkinter import ttk
@@ -18,7 +21,7 @@ class MainWindow:
     def setup_window(self):
         """Configurar las propiedades básicas de la ventana"""
         self.root.title("Syncro Bot")
-        self.root.geometry("800x600")
+        self.root.geometry("1100x600")
         self.root.resizable(True, True)
 
     def create_tabs(self):
