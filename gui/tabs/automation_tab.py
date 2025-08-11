@@ -7,10 +7,11 @@ con manejo mejorado de hilos y cierre seguro.
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, scrolledtext
 import webbrowser
 import threading
 import time
+from datetime import datetime
 
 
 class AutomationService:
@@ -113,30 +114,35 @@ class AutomationTab:
         self._create_right_column(right_column)
 
     def _create_left_column(self, parent):
-        """Crea la columna izquierda con controles"""
+        """Crea la columna izquierda con estado y controles"""
         parent.grid_rowconfigure(0, weight=0)
-        parent.grid_rowconfigure(1, weight=1)
+        parent.grid_rowconfigure(1, weight=0)
+        parent.grid_rowconfigure(2, weight=1)
         parent.grid_columnconfigure(0, weight=1)
 
-        controls_container = tk.Frame(parent, bg=self.colors['bg_primary'])
-        controls_container.grid(row=0, column=0, sticky='ew', pady=(0, 15))
-        self._create_controls_section(controls_container)
-
-        spacer = tk.Frame(parent, bg=self.colors['bg_primary'])
-        spacer.grid(row=1, column=0, sticky='nsew')
-
-    def _create_right_column(self, parent):
-        """Crea el contenido de la columna derecha"""
-        parent.grid_rowconfigure(0, weight=0)
-        parent.grid_rowconfigure(1, weight=1)
-        parent.grid_columnconfigure(0, weight=1)
-
+        # Estado del sistema arriba
         status_container = tk.Frame(parent, bg=self.colors['bg_primary'])
         status_container.grid(row=0, column=0, sticky='ew', pady=(0, 15))
         self._create_status_section(status_container)
 
+        # Controles debajo
+        controls_container = tk.Frame(parent, bg=self.colors['bg_primary'])
+        controls_container.grid(row=1, column=0, sticky='ew', pady=(0, 15))
+        self._create_controls_section(controls_container)
+
+        # Espaciador
         spacer = tk.Frame(parent, bg=self.colors['bg_primary'])
-        spacer.grid(row=1, column=0, sticky='nsew')
+        spacer.grid(row=2, column=0, sticky='nsew')
+
+    def _create_right_column(self, parent):
+        """Crea el contenido de la columna derecha con log"""
+        parent.grid_rowconfigure(0, weight=1)
+        parent.grid_columnconfigure(0, weight=1)
+
+        # Log en la columna derecha
+        log_container = tk.Frame(parent, bg=self.colors['bg_primary'])
+        log_container.grid(row=0, column=0, sticky='nsew')
+        self._create_log_section(log_container)
 
     def _create_card_frame(self, parent, title):
         """Crea un frame tipo tarjeta"""
@@ -162,25 +168,8 @@ class AutomationTab:
 
         return content
 
-    def _create_controls_section(self, parent):
-        """Crea sección de controles"""
-        card = self._create_card_frame(parent, "🎮 Controles de Automatización")
-
-        self.widgets['start_button'] = self._create_styled_button(
-            card, "▶️ Iniciar Automatización",
-            self._start_automation, self.colors['success']
-        )
-        self.widgets['start_button'].pack(fill='x', pady=(0, 15))
-
-        self.widgets['pause_button'] = self._create_styled_button(
-            card, "⏸️ Pausar Automatización",
-            self._pause_automation, self.colors['warning']
-        )
-        self.widgets['pause_button'].pack(fill='x')
-        self.widgets['pause_button'].configure(state='disabled')
-
     def _create_status_section(self, parent):
-        """Crea sección de estado"""
+        """Crea sección de estado del sistema"""
         card = self._create_card_frame(parent, "📊 Estado del Sistema")
 
         status_frame = tk.Frame(card, bg=self.colors['bg_tertiary'])
@@ -209,6 +198,49 @@ class AutomationTab:
         )
         self.widgets['url_status'].pack(side='right', padx=10, pady=8)
 
+    def _create_controls_section(self, parent):
+        """Crea sección de controles"""
+        card = self._create_card_frame(parent, "🎮 Controles de Automatización")
+
+        self.widgets['start_button'] = self._create_styled_button(
+            card, "▶️ Iniciar Automatización",
+            self._start_automation, self.colors['success']
+        )
+        self.widgets['start_button'].pack(fill='x', pady=(0, 15))
+
+        self.widgets['pause_button'] = self._create_styled_button(
+            card, "⏸️ Pausar Automatización",
+            self._pause_automation, self.colors['warning']
+        )
+        self.widgets['pause_button'].pack(fill='x')
+        self.widgets['pause_button'].configure(state='disabled')
+
+    def _create_log_section(self, parent):
+        """Crea sección de log"""
+        card = self._create_card_frame(parent, "📋 Log de Actividades")
+
+        # Área de texto con scroll
+        self.widgets['log_text'] = scrolledtext.ScrolledText(
+            card,
+            bg=self.colors['bg_tertiary'],
+            fg=self.colors['text_primary'],
+            font=('Consolas', 9),
+            relief='flat',
+            wrap=tk.WORD,
+            state=tk.DISABLED
+        )
+        self.widgets['log_text'].pack(fill='both', expand=True, pady=(0, 10))
+
+        # Botón para limpiar log
+        clear_log_btn = self._create_styled_button(
+            card, "🗑️ Limpiar Log",
+            self._clear_log, self.colors['text_secondary']
+        )
+        clear_log_btn.pack(fill='x')
+
+        # Agregar mensaje inicial al log
+        self._add_log_entry("Sistema iniciado")
+
     def _create_styled_button(self, parent, text, command, color):
         """Crea un botón con estilo"""
         btn = tk.Button(
@@ -225,6 +257,35 @@ class AutomationTab:
         )
         return btn
 
+    def _add_log_entry(self, message, level="INFO"):
+        """Añade una entrada al log"""
+        if self._is_closing or 'log_text' not in self.widgets:
+            return
+
+        try:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            log_entry = f"[{timestamp}] {level}: {message}\n"
+
+            self.widgets['log_text'].configure(state=tk.NORMAL)
+            self.widgets['log_text'].insert(tk.END, log_entry)
+            self.widgets['log_text'].configure(state=tk.DISABLED)
+            self.widgets['log_text'].see(tk.END)
+        except:
+            pass
+
+    def _clear_log(self):
+        """Limpia el contenido del log"""
+        if self._is_closing or 'log_text' not in self.widgets:
+            return
+
+        try:
+            self.widgets['log_text'].configure(state=tk.NORMAL)
+            self.widgets['log_text'].delete(1.0, tk.END)
+            self.widgets['log_text'].configure(state=tk.DISABLED)
+            self._add_log_entry("Log limpiado")
+        except:
+            pass
+
     def _start_automation(self):
         """Inicia la automatización"""
         if self._is_closing:
@@ -235,6 +296,7 @@ class AutomationTab:
                 if self._is_closing:
                     return
 
+                self._add_log_entry("Iniciando automatización...")
                 success, message = self.automation_service.start_automation()
 
                 if not self._is_closing:
@@ -253,19 +315,24 @@ class AutomationTab:
             return
 
         try:
+            self._add_log_entry("Pausando automatización...")
             success, message = self.automation_service.pause_automation()
             if success:
                 self._update_automation_status("Pausada", self.colors['warning'])
                 self.widgets['start_button'].configure(state='normal', text='▶️ Iniciar Automatización')
                 self.widgets['pause_button'].configure(state='disabled')
+                self._add_log_entry("Automatización pausada exitosamente")
                 if not self._is_closing:
                     messagebox.showinfo("Éxito", message)
             else:
+                self._add_log_entry(f"Error al pausar: {message}", "ERROR")
                 if not self._is_closing:
                     messagebox.showerror("Error", message)
         except Exception as e:
+            error_msg = str(e)
+            self._add_log_entry(f"Excepción al pausar: {error_msg}", "ERROR")
             if not self._is_closing:
-                messagebox.showerror("Error", f"Error al pausar automatización:\n{str(e)}")
+                messagebox.showerror("Error", f"Error al pausar automatización:\n{error_msg}")
 
     def _handle_start_result(self, success, message):
         """Maneja el resultado del inicio de automatización"""
@@ -276,11 +343,14 @@ class AutomationTab:
             self._update_automation_status("En ejecución", self.colors['success'])
             self.widgets['start_button'].configure(state='disabled', text='▶️ Iniciando...')
             self.widgets['pause_button'].configure(state='normal')
+            self._add_log_entry("Automatización iniciada exitosamente")
+            self._add_log_entry("Página web abierta en el navegador")
             messagebox.showinfo("Éxito", f"{message}\n\nLa página web se ha abierto en su navegador.")
         else:
             self._update_automation_status("Error", self.colors['error'])
             self.widgets['start_button'].configure(state='normal', text='▶️ Iniciar Automatización')
             self.widgets['pause_button'].configure(state='disabled')
+            self._add_log_entry(f"Error al iniciar: {message}", "ERROR")
             messagebox.showerror("Error", message)
 
     def _update_automation_status(self, text, color):
@@ -298,5 +368,6 @@ class AutomationTab:
     def cleanup(self):
         """Limpia recursos al cerrar la pestaña"""
         self._is_closing = True
+        self._add_log_entry("Cerrando sistema...")
         self.automation_service.stop_all()
         time.sleep(0.05)  # Pequeña pausa para que los hilos terminen
