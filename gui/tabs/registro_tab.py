@@ -1063,7 +1063,7 @@ class RegistroTab:
                     self.frame.after(0, lambda: messagebox.showerror("Error", f"Error generando Excel:\n{message}"))
                     return
 
-                # Preparar email
+                # Preparar email simplificado
                 subject = f"Syncro Bot - {report_title} - {datetime.now().strftime('%d/%m/%Y')}"
 
                 stats = {
@@ -1074,35 +1074,24 @@ class RegistroTab:
                     'sistema': len([r for r in records if r['usuario'] == 'Sistema'])
                 }
 
+                # ===== NUEVO FORMATO SIMPLIFICADO =====
                 body = f"""Estimado/a,
 
 Se adjunta el reporte de ejecuciones del sistema Syncro Bot correspondiente a: {report_type}
 
 RESUMEN EJECUTIVO:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 Total de Ejecuciones: {stats['total']}
-✅ Ejecuciones Exitosas: {stats['exitosos']}
-❌ Ejecuciones Fallidas: {stats['fallidos']}
-👤 Ejecuciones Manuales: {stats['usuario']}
-🤖 Ejecuciones Automáticas: {stats['sistema']}
-
-📈 Tasa de Éxito: {(stats['exitosos']/stats['total']*100 if stats['total'] > 0 else 0):.1f}%
-
-DETALLES:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📅 Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-📋 Tipo de reporte: {report_type}
-📎 Archivo adjunto: Excel con todos los detalles
-
-Para más información, consulte el archivo Excel adjunto que contiene el detalle completo de todas las ejecuciones.
+Total de Ejecuciones: {stats['total']}
+Ejecuciones Exitosas: {stats['exitosos']}
+Ejecuciones Fallidas: {stats['fallidos']}
+Ejecuciones Manuales: {stats['usuario']}
+Ejecuciones Automáticas: {stats['sistema']}
+Tasa de Éxito: {(stats['exitosos'] / stats['total'] * 100 if stats['total'] > 0 else 0):.1f}%
 
 Saludos cordiales,
-Sistema Syncro Bot
-"""
+Sistema Syncro Bot"""
+                # ===== FIN NUEVO FORMATO =====
 
                 # Enviar email con archivo adjunto
-                # Nota: Aquí asumiré que email_tab tiene un método para enviar con adjuntos
-                # Si no existe, se puede modificar para enviar sin adjunto
                 success_email, message_email = self._send_email_with_attachment(subject, body, filename)
 
                 # Limpiar archivo temporal
@@ -1138,12 +1127,18 @@ Sistema Syncro Bot
         threading.Thread(target=send_thread, daemon=True).start()
 
     def _send_email_with_attachment(self, subject, body, attachment_path):
-        """Envía email con archivo adjunto (implementación simplificada)"""
-        # Por ahora, enviamos sin adjunto ya que email_tab no tiene soporte para adjuntos
-        # En una implementación futura se podría agregar esta funcionalidad
+        """Envía email con archivo adjunto"""
         try:
-            return self.email_tab.send_email(subject,
-                                             body + f"\n\nNOTA: El archivo Excel fue generado como '{attachment_path}'")
+            # Verificar que el archivo existe
+            if not os.path.exists(attachment_path):
+                return False, f"El archivo {attachment_path} no existe"
+
+            # Enviar email con adjunto usando argumentos nombrados
+            return self.email_tab.send_email(
+                subject=subject,
+                body=body,
+                attachments=[attachment_path]
+            )
         except Exception as e:
             return False, str(e)
 
@@ -1421,22 +1416,33 @@ Usuario: {record['usuario']}"""
             if not success:
                 return False, f"Error generando Excel: {message}"
 
-            # Preparar email
+            # Preparar email simplificado
             subject = f"Syncro Bot - {report_title} - {datetime.now().strftime('%d/%m/%Y')}"
 
             stats = {
                 'total': len(records),
                 'exitosos': len([r for r in records if r['estado'] == 'Exitoso']),
-                'fallidos': len([r for r in records if r['estado'] == 'Fallido'])
+                'fallidos': len([r for r in records if r['estado'] == 'Fallido']),
+                'usuario': len([r for r in records if r['usuario'] == 'Usuario']),
+                'sistema': len([r for r in records if r['usuario'] == 'Sistema'])
             }
 
-            body = f"""Reporte automático del sistema Syncro Bot.
+            # ===== FORMATO SIMPLIFICADO PARA REPORTES AUTOMÁTICOS =====
+            body = f"""Estimado/a,
 
-📊 Resumen: {stats['total']} ejecuciones ({stats['exitosos']} exitosas, {stats['fallidos']} fallidas)
-📅 Generado: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+Se adjunta el reporte de ejecuciones del sistema Syncro Bot correspondiente a: {report_type}
 
-Consulte el archivo Excel adjunto para más detalles.
-"""
+RESUMEN EJECUTIVO:
+Total de Ejecuciones: {stats['total']}
+Ejecuciones Exitosas: {stats['exitosos']}
+Ejecuciones Fallidas: {stats['fallidos']}
+Ejecuciones Manuales: {stats['usuario']}
+Ejecuciones Automáticas: {stats['sistema']}
+Tasa de Éxito: {(stats['exitosos'] / stats['total'] * 100 if stats['total'] > 0 else 0):.1f}%
+
+Saludos cordiales,
+Sistema Syncro Bot"""
+            # ===== FIN FORMATO SIMPLIFICADO =====
 
             # Enviar email
             success_email, message_email = self._send_email_with_attachment(subject, body, filename)

@@ -3,7 +3,7 @@
 """
 Pestaña de configuración de email para Syncro Bot.
 Gestiona la configuración SMTP, pruebas de conexión, destinatarios y envío de correos.
-Incluye encriptación de datos y persistencia de configuración.
+Incluye encriptación de datos, persistencia de configuración y soporte para adjuntos.
 """
 
 import tkinter as tk
@@ -25,6 +25,8 @@ except ImportError:
 try:
     import email.mime.text as email_text
     import email.mime.multipart as email_multipart
+    import email.mime.base as email_base
+    from email import encoders
 except ImportError:
     print("Error con las librerías de email del sistema.")
     raise
@@ -134,7 +136,7 @@ class EmailConfigManager:
 
 
 class EmailService:
-    """Servicio de envío de emails"""
+    """Servicio de envío de emails con soporte para adjuntos"""
 
     def __init__(self):
         self.smtp_configs = {
@@ -200,8 +202,8 @@ class EmailService:
             clean_error = self._clean_string(error_msg)
             return False, clean_error
 
-    def send_email(self, to_email, cc_emails, subject, body):
-        """Envía un email"""
+    def send_email(self, to_email, cc_emails, subject, body, attachments=None):
+        """Envía un email con soporte para adjuntos"""
         try:
             if not self.config:
                 return False, "No hay configuración establecida"
@@ -225,6 +227,33 @@ class EmailService:
 
             # Adjuntar el cuerpo del mensaje con encoding específico
             msg.attach(email_text.MIMEText(clean_body, 'plain', 'utf-8'))
+
+            # ===== NUEVO: SOPORTE PARA ADJUNTOS =====
+            if attachments:
+                for attachment_path in attachments:
+                    if os.path.exists(attachment_path):
+                        try:
+                            with open(attachment_path, "rb") as attachment:
+                                # Crear objeto MIME para el adjunto
+                                part = email_base.MIMEBase('application', 'octet-stream')
+                                part.set_payload(attachment.read())
+
+                            # Codificar el adjunto
+                            encoders.encode_base64(part)
+
+                            # Agregar header al adjunto
+                            filename = os.path.basename(attachment_path)
+                            part.add_header(
+                                'Content-Disposition',
+                                f'attachment; filename= {filename}',
+                            )
+
+                            # Adjuntar al mensaje
+                            msg.attach(part)
+                        except Exception as e:
+                            print(f"Error adjuntando archivo {attachment_path}: {e}")
+                            return False, f"Error adjuntando archivo: {e}"
+            # ===== FIN NUEVO SOPORTE =====
 
             # Conectar y enviar
             server = smtplib.SMTP(self.config["smtp_server"], self.config["port"])
@@ -1034,8 +1063,8 @@ class EmailTab:
         except:
             return "", []
 
-    def send_email(self, subject, body):
-        """Envía un email con la configuración actual"""
+    def send_email(self, subject, body, attachments=None):
+        """Envía un email con la configuración actual y soporte para adjuntos"""
         try:
             if not self.is_configured:
                 return False, "Email no configurado"
@@ -1045,7 +1074,9 @@ class EmailTab:
                 return False, "No hay destinatario principal configurado"
 
             self._configure_email_service()
-            return self.email_service.send_email(main_recipient, cc_recipients, subject, body)
+
+            # Enviar email con adjuntos si se proporcionan
+            return self.email_service.send_email(main_recipient, cc_recipients, subject, body, attachments)
 
         except Exception as e:
             return False, str(e)
