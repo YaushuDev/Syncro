@@ -2,7 +2,8 @@
 # Ubicación: /syncro_bot/gui/tabs/profiles_tab.py
 """
 Pestaña de perfiles de automatización para Syncro Bot.
-Permite programar horarios específicos para ejecutar automáticamente el bot.
+Permite programar horarios específicos para ejecutar automáticamente el bot
+con integración al sistema de registro de ejecuciones y envío programado de reportes.
 """
 
 import tkinter as tk
@@ -10,6 +11,7 @@ from tkinter import ttk, messagebox
 import threading
 import json
 import os
+import webbrowser
 from datetime import datetime, time
 
 
@@ -21,8 +23,10 @@ class ProfilesManager:
         self.profiles = []
         self.load_profiles()
 
-    def add_profile(self, name, hour, minute, days, enabled=True):
-        """Añade un nuevo perfil de automatización"""
+    def add_profile(self, name, hour, minute, days, enabled=True,
+                    send_report=False, report_frequency="Después de cada ejecución",
+                    report_type="Últimos 7 días"):
+        """Añade un nuevo perfil de automatización con configuración de reportes"""
         profile = {
             "id": self._generate_id(),
             "name": name,
@@ -30,6 +34,11 @@ class ProfilesManager:
             "minute": minute,
             "days": days,  # Lista de días: ['Lunes', 'Martes', etc.]
             "enabled": enabled,
+            # ===== NUEVOS CAMPOS DE REPORTES =====
+            "send_report": send_report,
+            "report_frequency": report_frequency,
+            "report_type": report_type,
+            # ===== FIN NUEVOS CAMPOS =====
             "created": datetime.now().isoformat()
         }
         self.profiles.append(profile)
@@ -69,7 +78,19 @@ class ProfilesManager:
         try:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r', encoding='utf-8') as f:
-                    self.profiles = json.load(f)
+                    loaded_profiles = json.load(f)
+
+                # Migrar perfiles antiguos que no tienen campos de reportes
+                for profile in loaded_profiles:
+                    if "send_report" not in profile:
+                        profile["send_report"] = False
+                        profile["report_frequency"] = "Después de cada ejecución"
+                        profile["report_type"] = "Últimos 7 días"
+
+                self.profiles = loaded_profiles
+                # Guardar cambios de migración
+                if any("send_report" not in p for p in loaded_profiles):
+                    self.save_profiles()
             else:
                 self.profiles = []
         except Exception as e:
@@ -79,6 +100,49 @@ class ProfilesManager:
     def _generate_id(self):
         """Genera un ID único para el perfil"""
         return str(len(self.profiles) + 1) + str(int(datetime.now().timestamp()))
+
+
+class ProfileExecutionService:
+    """Servicio de ejecución de perfiles automáticos"""
+
+    def __init__(self):
+        self.target_url = "https://fieldservice.cabletica.com/dispatchFS/"
+        self.is_executing = False
+        self._lock = threading.Lock()
+
+    def execute_profile(self, profile):
+        """Ejecuta un perfil específico"""
+        try:
+            with self._lock:
+                if self.is_executing:
+                    return False, "Ya hay una ejecución de perfil en curso"
+
+                self.is_executing = True
+
+                # Simular ejecución - abrir navegador
+                webbrowser.open(self.target_url)
+
+                # Simular tiempo de procesamiento (en una implementación real aquí iría la lógica del bot)
+                # Por ahora solo simulamos que tarda un poco
+                time_to_simulate = 2  # segundos
+                threading.Timer(time_to_simulate, self._finish_execution).start()
+
+                return True, f"Perfil '{profile['name']}' ejecutado correctamente"
+
+        except Exception as e:
+            with self._lock:
+                self.is_executing = False
+            return False, f"Error ejecutando perfil: {str(e)}"
+
+    def _finish_execution(self):
+        """Finaliza la ejecución simulada"""
+        with self._lock:
+            self.is_executing = False
+
+    def is_busy(self):
+        """Verifica si está ejecutando un perfil"""
+        with self._lock:
+            return self.is_executing
 
 
 class ProfilesTab:
@@ -101,8 +165,14 @@ class ProfilesTab:
         }
 
         self.profiles_manager = ProfilesManager()
+        self.execution_service = ProfileExecutionService()
         self.widgets = {}
         self.selected_profile = None
+
+        # ===== INTEGRACIÓN CON REGISTRO Y EMAIL =====
+        self.registry_tab = None
+        self.current_execution_record = None
+        # ===== FIN INTEGRACIÓN =====
 
         # Control de secciones colapsables
         self.expanded_section = None
@@ -110,6 +180,10 @@ class ProfilesTab:
 
         self.create_tab()
         self.refresh_profiles_list()
+
+    def set_registry_tab(self, registry_tab):
+        """Establece la referencia al RegistroTab para logging"""
+        self.registry_tab = registry_tab
 
     def create_tab(self):
         """Crear la pestaña de perfiles"""
@@ -150,8 +224,9 @@ class ProfilesTab:
         """Crea la columna izquierda con secciones colapsables"""
         parent.grid_rowconfigure(0, weight=0)  # Sección de configuración
         parent.grid_rowconfigure(1, weight=0)  # Sección de horarios
-        parent.grid_rowconfigure(2, weight=0)  # Sección de acciones
-        parent.grid_rowconfigure(3, weight=1)  # Espaciador
+        parent.grid_rowconfigure(2, weight=0)  # Sección de reportes ===== NUEVA =====
+        parent.grid_rowconfigure(3, weight=0)  # Sección de acciones
+        parent.grid_rowconfigure(4, weight=1)  # Espaciador
         parent.grid_columnconfigure(0, weight=1)
 
         # Sección de configuración básica
@@ -168,16 +243,24 @@ class ProfilesTab:
             min_height=220
         )
 
+        # ===== NUEVA SECCIÓN DE REPORTES =====
+        self._create_collapsible_section(
+            parent, "reports", "📧 Configuración de Reportes",
+            self._create_reports_content, row=2, default_expanded=False,
+            min_height=260
+        )
+        # ===== FIN NUEVA SECCIÓN =====
+
         # Sección de acciones
         self._create_collapsible_section(
             parent, "actions", "🎮 Acciones",
-            self._create_actions_content, row=2, default_expanded=False,
-            min_height=160
+            self._create_actions_content, row=3, default_expanded=False,
+            min_height=200
         )
 
         # Espaciador
         spacer = tk.Frame(parent, bg=self.colors['bg_primary'])
-        spacer.grid(row=3, column=0, sticky='nsew')
+        spacer.grid(row=4, column=0, sticky='nsew')
 
     def _create_right_column(self, parent):
         """Crea el contenido de la columna derecha"""
@@ -401,6 +484,80 @@ class ProfilesTab:
         days_grid.grid_columnconfigure(0, weight=1)
         days_grid.grid_columnconfigure(1, weight=1)
 
+    # ===== NUEVA SECCIÓN DE REPORTES =====
+    def _create_reports_content(self, parent):
+        """Crea el contenido de configuración de reportes"""
+        content = tk.Frame(parent, bg=self.colors['bg_primary'])
+        content.pack(fill='x', padx=18, pady=15)
+
+        # Activar reportes
+        report_enable_frame = tk.Frame(content, bg=self.colors['bg_tertiary'])
+        report_enable_frame.pack(fill='x', pady=(0, 15))
+
+        self.widgets['send_report_var'] = tk.BooleanVar(value=False)
+        send_report_cb = tk.Checkbutton(report_enable_frame,
+                                        text="📧 Enviar Reportes Automáticamente",
+                                        variable=self.widgets['send_report_var'],
+                                        command=self._toggle_report_options,
+                                        bg=self.colors['bg_tertiary'],
+                                        fg=self.colors['text_primary'],
+                                        font=('Arial', 10, 'bold'),
+                                        activebackground=self.colors['bg_tertiary'],
+                                        selectcolor=self.colors['bg_tertiary'])
+        send_report_cb.pack(padx=15, pady=12)
+
+        # Opciones de reportes (inicialmente deshabilitadas)
+        self.widgets['report_options_frame'] = tk.Frame(content, bg=self.colors['bg_primary'])
+
+        # Frecuencia de reportes
+        freq_frame = tk.Frame(self.widgets['report_options_frame'], bg=self.colors['bg_primary'])
+        freq_frame.pack(fill='x', pady=(0, 10))
+
+        tk.Label(freq_frame, text="📅 Frecuencia de Envío:", bg=self.colors['bg_primary'],
+                 fg=self.colors['text_primary'], font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 5))
+
+        self.widgets['report_frequency'] = ttk.Combobox(freq_frame, values=[
+            "Después de cada ejecución",
+            "Diario",
+            "Semanal",
+            "Mensual"
+        ], state="readonly", width=25)
+        self.widgets['report_frequency'].set("Después de cada ejecución")
+        self.widgets['report_frequency'].pack(anchor='w')
+
+        # Tipo de reporte
+        type_frame = tk.Frame(self.widgets['report_options_frame'], bg=self.colors['bg_primary'])
+        type_frame.pack(fill='x')
+
+        tk.Label(type_frame, text="📝 Tipo de Reporte:", bg=self.colors['bg_primary'],
+                 fg=self.colors['text_primary'], font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 5))
+
+        self.widgets['report_type'] = ttk.Combobox(type_frame, values=[
+            "Últimos 7 días",
+            "Últimos 30 días",
+            "Solo Exitosos",
+            "Solo Fallidos",
+            "Solo Ejecuciones del Perfil",
+            "Todos los Registros"
+        ], state="readonly", width=25)
+        self.widgets['report_type'].set("Últimos 7 días")
+        self.widgets['report_type'].pack(anchor='w')
+
+        # Información
+        info_frame = tk.Frame(self.widgets['report_options_frame'], bg=self.colors['bg_secondary'])
+        info_frame.pack(fill='x', pady=(15, 0))
+
+        info_text = ("💡 Los reportes se enviarán automáticamente según la frecuencia configurada.\n"
+                     "📧 Asegúrese de tener configurado el email en la pestaña 'Email'.")
+        tk.Label(info_frame, text=info_text, bg=self.colors['bg_secondary'],
+                 fg=self.colors['text_secondary'], font=('Arial', 9, 'italic'),
+                 justify='left').pack(padx=10, pady=8)
+
+        # Inicialmente ocultar opciones
+        self._toggle_report_options()
+
+    # ===== FIN NUEVA SECCIÓN =====
+
     def _create_actions_content(self, parent):
         """Crea el contenido de acciones"""
         content = tk.Frame(parent, bg=self.colors['bg_primary'])
@@ -420,6 +577,14 @@ class ProfilesTab:
         )
         self.widgets['update_button'].pack(fill='x', pady=(0, 10))
         self.widgets['update_button'].configure(state='disabled')
+
+        # Botón para probar ejecución de perfil (simulando ejecución automática)
+        self.widgets['test_execute_button'] = self._create_styled_button(
+            content, "🧪 Probar Ejecución de Perfil",
+            self._test_execute_profile, self.colors['warning']
+        )
+        self.widgets['test_execute_button'].pack(fill='x', pady=(0, 10))
+        self.widgets['test_execute_button'].configure(state='disabled')
 
         # Botón limpiar formulario
         self.widgets['clear_button'] = self._create_styled_button(
@@ -474,6 +639,21 @@ class ProfilesTab:
         )
         self.widgets['active_count'].pack(side='right', padx=10, pady=8)
 
+        # ===== NUEVO: Estado de reportes =====
+        reports_frame = tk.Frame(card, bg=self.colors['bg_tertiary'])
+        reports_frame.pack(fill='x', pady=(0, 10))
+
+        tk.Label(reports_frame, text="📧 Con Reportes:", bg=self.colors['bg_tertiary'],
+                 fg=self.colors['text_primary'], font=('Arial', 10)).pack(
+            side='left', padx=10, pady=8)
+
+        self.widgets['reports_count'] = tk.Label(
+            reports_frame, text="0", bg=self.colors['bg_tertiary'],
+            fg=self.colors['info'], font=('Arial', 10, 'bold')
+        )
+        self.widgets['reports_count'].pack(side='right', padx=10, pady=8)
+        # ===== FIN NUEVO =====
+
         # Total de perfiles
         total_frame = tk.Frame(card, bg=self.colors['bg_tertiary'])
         total_frame.pack(fill='x')
@@ -484,7 +664,7 @@ class ProfilesTab:
 
         self.widgets['total_count'] = tk.Label(
             total_frame, text="0", bg=self.colors['bg_tertiary'],
-            fg=self.colors['info'], font=('Arial', 10, 'bold')
+            fg=self.colors['text_secondary'], font=('Arial', 10, 'bold')
         )
         self.widgets['total_count'].pack(side='right', padx=10, pady=8)
 
@@ -496,8 +676,8 @@ class ProfilesTab:
         list_frame = tk.Frame(card, bg=self.colors['bg_primary'])
         list_frame.pack(fill='both', expand=True, pady=(0, 15))
 
-        # Treeview para mostrar perfiles
-        columns = ('nombre', 'horario', 'dias', 'estado')
+        # Treeview para mostrar perfiles (añadida columna de reportes)
+        columns = ('nombre', 'horario', 'dias', 'estado', 'reportes')
         self.widgets['profiles_tree'] = ttk.Treeview(list_frame, columns=columns, show='headings', height=12)
 
         # Configurar columnas
@@ -505,11 +685,13 @@ class ProfilesTab:
         self.widgets['profiles_tree'].heading('horario', text='Horario')
         self.widgets['profiles_tree'].heading('dias', text='Días')
         self.widgets['profiles_tree'].heading('estado', text='Estado')
+        self.widgets['profiles_tree'].heading('reportes', text='Reportes')
 
-        self.widgets['profiles_tree'].column('nombre', width=100)
-        self.widgets['profiles_tree'].column('horario', width=70)
-        self.widgets['profiles_tree'].column('dias', width=90)
-        self.widgets['profiles_tree'].column('estado', width=70)
+        self.widgets['profiles_tree'].column('nombre', width=80)
+        self.widgets['profiles_tree'].column('horario', width=60)
+        self.widgets['profiles_tree'].column('dias', width=70)
+        self.widgets['profiles_tree'].column('estado', width=60)
+        self.widgets['profiles_tree'].column('reportes', width=60)
 
         # Scrollbar para la lista
         scrollbar = ttk.Scrollbar(list_frame, orient='vertical', command=self.widgets['profiles_tree'].yview)
@@ -573,6 +755,16 @@ class ProfilesTab:
         )
         return btn
 
+    # ===== NUEVO MÉTODO PARA ALTERNAR OPCIONES DE REPORTES =====
+    def _toggle_report_options(self):
+        """Alterna la visibilidad de las opciones de reportes"""
+        if self.widgets['send_report_var'].get():
+            self.widgets['report_options_frame'].pack(fill='x', pady=(0, 15))
+        else:
+            self.widgets['report_options_frame'].pack_forget()
+
+    # ===== FIN NUEVO MÉTODO =====
+
     def _save_profile(self):
         """Guarda un nuevo perfil"""
         if not self._validate_form():
@@ -583,6 +775,12 @@ class ProfilesTab:
             hour = int(self.widgets['hour_var'].get())
             minute = int(self.widgets['minute_var'].get())
             enabled = self.widgets['enabled_var'].get()
+
+            # ===== NUEVOS CAMPOS DE REPORTES =====
+            send_report = self.widgets['send_report_var'].get()
+            report_frequency = self.widgets['report_frequency'].get()
+            report_type = self.widgets['report_type'].get()
+            # ===== FIN NUEVOS CAMPOS =====
 
             # Obtener días seleccionados
             selected_days = []
@@ -596,8 +794,11 @@ class ProfilesTab:
                     self._toggle_section("schedule")
                 return
 
-            # Crear perfil
-            profile = self.profiles_manager.add_profile(name, hour, minute, selected_days, enabled)
+            # Crear perfil con campos de reportes
+            profile = self.profiles_manager.add_profile(
+                name, hour, minute, selected_days, enabled,
+                send_report, report_frequency, report_type
+            )
 
             messagebox.showinfo("Éxito", f"Perfil '{name}' guardado correctamente")
             self._clear_form()
@@ -617,6 +818,12 @@ class ProfilesTab:
             minute = int(self.widgets['minute_var'].get())
             enabled = self.widgets['enabled_var'].get()
 
+            # ===== NUEVOS CAMPOS DE REPORTES =====
+            send_report = self.widgets['send_report_var'].get()
+            report_frequency = self.widgets['report_frequency'].get()
+            report_type = self.widgets['report_type'].get()
+            # ===== FIN NUEVOS CAMPOS =====
+
             # Obtener días seleccionados
             selected_days = []
             for day, var in self.widgets['days_vars'].items():
@@ -629,10 +836,11 @@ class ProfilesTab:
                     self._toggle_section("schedule")
                 return
 
-            # Actualizar perfil
+            # Actualizar perfil con campos de reportes
             updated_profile = self.profiles_manager.update_profile(
                 self.selected_profile["id"],
-                name=name, hour=hour, minute=minute, days=selected_days, enabled=enabled
+                name=name, hour=hour, minute=minute, days=selected_days, enabled=enabled,
+                send_report=send_report, report_frequency=report_frequency, report_type=report_type
             )
 
             if updated_profile:
@@ -660,12 +868,165 @@ class ProfilesTab:
             except Exception as e:
                 messagebox.showerror("Error", f"Error al eliminar perfil:\n{str(e)}")
 
+    def _test_execute_profile(self):
+        """Ejecuta un perfil seleccionado para pruebas (simula ejecución automática)"""
+        if not self.selected_profile:
+            messagebox.showwarning("Sin Selección", "Debe seleccionar un perfil para ejecutar")
+            return
+
+        if self.execution_service.is_busy():
+            messagebox.showwarning("Ocupado", "Ya hay una ejecución de perfil en curso")
+            return
+
+        def execute_thread():
+            try:
+                profile = self.selected_profile
+                profile_name = profile['name']
+
+                # Registrar inicio de ejecución automática
+                start_time = datetime.now()
+                execution_record = None
+
+                if self.registry_tab:
+                    try:
+                        execution_record = self.registry_tab.add_execution_record(
+                            start_time=start_time,
+                            profile_name=profile_name,
+                            user_type="Sistema"  # Ejecuciones de perfiles son automáticas
+                        )
+                        print(f"Registro creado para perfil '{profile_name}': ID {execution_record['id']}")
+                    except Exception as e:
+                        print(f"Error creando registro: {str(e)}")
+
+                # Ejecutar el perfil
+                success, message = self.execution_service.execute_profile(profile)
+
+                # Esperar a que termine la ejecución simulada
+                import time
+                time.sleep(2.5)
+
+                # Actualizar registro con resultado final
+                end_time = datetime.now()
+                final_status = "Exitoso" if success else "Fallido"
+                error_message = "" if success else message
+
+                if self.registry_tab and execution_record:
+                    try:
+                        self.registry_tab.update_execution_record(
+                            record_id=execution_record['id'],
+                            end_time=end_time,
+                            status=final_status,
+                            error_message=error_message
+                        )
+                        print(f"Registro actualizado: {final_status}")
+                    except Exception as e:
+                        print(f"Error actualizando registro: {str(e)}")
+
+                # ===== NUEVO: ENVÍO DE REPORTES AUTOMÁTICOS =====
+                if success and profile.get('send_report', False):
+                    try:
+                        self._send_profile_report(profile, execution_record)
+                    except Exception as e:
+                        print(f"Error enviando reporte automático: {str(e)}")
+                # ===== FIN NUEVO =====
+
+                # Mostrar resultado en UI
+                self.frame.after(0, lambda: self._show_execution_result(success, message, profile_name))
+
+            except Exception as e:
+                error_msg = str(e)
+                print(f"Excepción en ejecución de perfil: {error_msg}")
+
+                # Actualizar registro con excepción
+                if self.registry_tab and execution_record:
+                    try:
+                        end_time = datetime.now()
+                        self.registry_tab.update_execution_record(
+                            record_id=execution_record['id'],
+                            end_time=end_time,
+                            status="Fallido",
+                            error_message=f"Excepción: {error_msg}"
+                        )
+                    except Exception as reg_error:
+                        print(f"Error actualizando registro con excepción: {str(reg_error)}")
+
+                self.frame.after(0, lambda: self._show_execution_result(False, error_msg, profile['name']))
+
+        # Ejecutar en hilo separado
+        threading.Thread(target=execute_thread, daemon=True).start()
+
+        # Feedback inmediato
+        messagebox.showinfo("Ejecución Iniciada",
+                            f"Se ha iniciado la ejecución del perfil '{self.selected_profile['name']}'.\n\n" +
+                            "Revise la pestaña 'Registro' para ver el progreso.")
+
+    def _show_execution_result(self, success, message, profile_name):
+        """Muestra el resultado de la ejecución en la UI"""
+        if success:
+            messagebox.showinfo("Ejecución Completada",
+                                f"✅ Perfil '{profile_name}' ejecutado exitosamente.\n\n{message}")
+        else:
+            messagebox.showerror("Error de Ejecución",
+                                 f"❌ Error ejecutando perfil '{profile_name}':\n\n{message}")
+
+    # ===== NUEVO MÉTODO PARA ENVÍO DE REPORTES =====
+    def _send_profile_report(self, profile, execution_record=None):
+        """Envía reporte según configuración del perfil"""
+        if not self.registry_tab:
+            print("Warning: No hay referencia a registry_tab para enviar reporte")
+            return
+
+        try:
+            report_frequency = profile.get('report_frequency', 'Después de cada ejecución')
+            report_type = profile.get('report_type', 'Últimos 7 días')
+
+            # Por ahora solo implementamos "Después de cada ejecución"
+            # Las otras frecuencias requerirían un sistema de scheduling más complejo
+            if report_frequency == "Después de cada ejecución":
+
+                # Ajustar tipo de reporte si es específico del perfil
+                if report_type == "Solo Ejecuciones del Perfil":
+                    # Esto requeriría filtrar por nombre de perfil, pero por simplicidad
+                    # usaremos "Últimos 7 días" como fallback
+                    report_type_to_send = "Últimos 7 días"
+                else:
+                    report_type_to_send = report_type
+
+                # Generar título personalizado
+                custom_title = f"Reporte Automático - Perfil '{profile['name']}'"
+
+                # Enviar reporte
+                success, message = self.registry_tab.generate_and_send_report(
+                    report_type=report_type_to_send,
+                    custom_title=custom_title
+                )
+
+                if success:
+                    print(f"Reporte enviado exitosamente para perfil '{profile['name']}'")
+                else:
+                    print(f"Error enviando reporte para perfil '{profile['name']}': {message}")
+
+            else:
+                print(f"Frecuencia '{report_frequency}' no implementada aún")
+
+        except Exception as e:
+            print(f"Excepción enviando reporte automático: {str(e)}")
+
+    # ===== FIN NUEVO MÉTODO =====
+
     def _clear_form(self):
         """Limpia el formulario"""
         self.widgets['profile_name'].delete(0, 'end')
         self.widgets['hour_var'].set("08")
         self.widgets['minute_var'].set("00")
         self.widgets['enabled_var'].set(True)
+
+        # ===== LIMPIAR CAMPOS DE REPORTES =====
+        self.widgets['send_report_var'].set(False)
+        self.widgets['report_frequency'].set("Después de cada ejecución")
+        self.widgets['report_type'].set("Últimos 7 días")
+        self._toggle_report_options()  # Ocultar opciones
+        # ===== FIN LIMPIAR CAMPOS =====
 
         # Limpiar días
         for var in self.widgets['days_vars'].values():
@@ -675,6 +1036,7 @@ class ProfilesTab:
         self.selected_profile = None
         self.widgets['update_button'].configure(state='disabled')
         self.widgets['delete_button'].configure(state='disabled')
+        self.widgets['test_execute_button'].configure(state='disabled')
         self.widgets['save_button'].configure(state='normal')
         self.widgets['save_button'].configure(text="💾 Guardar Nuevo Perfil")
 
@@ -705,6 +1067,7 @@ class ProfilesTab:
             self.selected_profile = None
             self.widgets['update_button'].configure(state='disabled')
             self.widgets['delete_button'].configure(state='disabled')
+            self.widgets['test_execute_button'].configure(state='disabled')
             self.widgets['save_button'].configure(text="💾 Guardar Nuevo Perfil")
             return
 
@@ -723,6 +1086,7 @@ class ProfilesTab:
         # Habilitar botones
         self.widgets['update_button'].configure(state='normal')
         self.widgets['delete_button'].configure(state='normal')
+        self.widgets['test_execute_button'].configure(state='normal')
         self.widgets['save_button'].configure(state='disabled')
         self.widgets['save_button'].configure(text="⚠️ Seleccione 'Actualizar' para modificar")
 
@@ -731,11 +1095,18 @@ class ProfilesTab:
         # Limpiar formulario primero
         self._clear_form()
 
-        # Cargar datos
+        # Cargar datos básicos
         self.widgets['profile_name'].insert(0, profile['name'])
         self.widgets['hour_var'].set(f"{profile['hour']:02d}")
         self.widgets['minute_var'].set(f"{profile['minute']:02d}")
         self.widgets['enabled_var'].set(profile['enabled'])
+
+        # ===== CARGAR CAMPOS DE REPORTES =====
+        self.widgets['send_report_var'].set(profile.get('send_report', False))
+        self.widgets['report_frequency'].set(profile.get('report_frequency', 'Después de cada ejecución'))
+        self.widgets['report_type'].set(profile.get('report_type', 'Últimos 7 días'))
+        self._toggle_report_options()  # Mostrar/ocultar según configuración
+        # ===== FIN CARGAR CAMPOS =====
 
         # Cargar días
         for day in profile['days']:
@@ -751,6 +1122,7 @@ class ProfilesTab:
         # Cargar perfiles
         profiles = self.profiles_manager.get_profiles()
         active_count = 0
+        reports_count = 0  # ===== NUEVO CONTADOR =====
 
         for profile in profiles:
             # Formatear horario
@@ -766,16 +1138,90 @@ class ProfilesTab:
             if profile['enabled']:
                 active_count += 1
 
-            # Insertar en la lista
+            # ===== COLUMNA DE REPORTES =====
+            reportes = "📧 Sí" if profile.get('send_report', False) else "❌ No"
+            if profile.get('send_report', False):
+                reports_count += 1
+            # ===== FIN COLUMNA DE REPORTES =====
+
+            # Insertar en la lista (con nueva columna)
             self.widgets['profiles_tree'].insert('', 'end', values=(
-                profile['name'], horario, dias, estado
+                profile['name'], horario, dias, estado, reportes
             ))
 
         # Actualizar contadores
         self.widgets['active_count'].configure(text=str(active_count))
+        self.widgets['reports_count'].configure(text=str(reports_count))  # ===== NUEVO =====
         self.widgets['total_count'].configure(text=str(len(profiles)))
 
     def get_active_profiles(self):
         """Obtiene los perfiles activos"""
         profiles = self.profiles_manager.get_profiles()
         return [p for p in profiles if p['enabled']]
+
+    def execute_profile_automatically(self, profile):
+        """
+        Método público para ejecutar un perfil automáticamente (llamado por scheduler).
+        Este sería usado por un sistema de scheduling futuro.
+        """
+
+        def execute_async():
+            try:
+                profile_name = profile['name']
+
+                # Registrar inicio
+                start_time = datetime.now()
+                execution_record = None
+
+                if self.registry_tab:
+                    execution_record = self.registry_tab.add_execution_record(
+                        start_time=start_time,
+                        profile_name=profile_name,
+                        user_type="Sistema"
+                    )
+
+                # Ejecutar
+                success, message = self.execution_service.execute_profile(profile)
+
+                # Esperar finalización
+                import time
+                time.sleep(2.5)
+
+                # Actualizar registro
+                if self.registry_tab and execution_record:
+                    end_time = datetime.now()
+                    final_status = "Exitoso" if success else "Fallido"
+                    error_message = "" if success else message
+
+                    self.registry_tab.update_execution_record(
+                        record_id=execution_record['id'],
+                        end_time=end_time,
+                        status=final_status,
+                        error_message=error_message
+                    )
+
+                # ===== ENVÍO AUTOMÁTICO DE REPORTES =====
+                if success and profile.get('send_report', False):
+                    try:
+                        self._send_profile_report(profile, execution_record)
+                    except Exception as e:
+                        print(f"Error enviando reporte automático: {str(e)}")
+                # ===== FIN ENVÍO AUTOMÁTICO =====
+
+                return success, message
+
+            except Exception as e:
+                # Manejar excepción
+                if self.registry_tab and execution_record:
+                    end_time = datetime.now()
+                    self.registry_tab.update_execution_record(
+                        record_id=execution_record['id'],
+                        end_time=end_time,
+                        status="Fallido",
+                        error_message=f"Excepción: {str(e)}"
+                    )
+                return False, str(e)
+
+        # Ejecutar de forma asíncrona
+        thread = threading.Thread(target=execute_async, daemon=True)
+        thread.start()

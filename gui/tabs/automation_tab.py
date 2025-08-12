@@ -3,7 +3,7 @@
 """
 Pestaña de automatización para Syncro Bot.
 Proporciona la interfaz para configurar y gestionar tareas automatizadas
-con manejo mejorado de hilos y cierre seguro.
+con manejo mejorado de hilos, cierre seguro e integración con sistema de registro.
 """
 
 import tkinter as tk
@@ -82,7 +82,17 @@ class AutomationTab:
         self.automation_service = AutomationService()
         self.widgets = {}
         self._is_closing = False
+
+        # Variables para registro de ejecuciones
+        self.current_execution_record = None
+        self.execution_start_time = None
+        self.registry_tab = None
+
         self.create_tab()
+
+    def set_registry_tab(self, registry_tab):
+        """Establece la referencia al RegistroTab para logging"""
+        self.registry_tab = registry_tab
 
     def create_tab(self):
         """Crear la pestaña de automatización"""
@@ -297,6 +307,22 @@ class AutomationTab:
                     return
 
                 self._add_log_entry("Iniciando automatización...")
+
+                # ===== INTEGRACIÓN CON REGISTRO =====
+                # Registrar inicio de ejecución
+                if self.registry_tab:
+                    try:
+                        self.execution_start_time = datetime.now()
+                        self.current_execution_record = self.registry_tab.add_execution_record(
+                            start_time=self.execution_start_time,
+                            profile_name="Manual",
+                            user_type="Usuario"
+                        )
+                        self._add_log_entry(f"Registro de ejecución creado: ID {self.current_execution_record['id']}")
+                    except Exception as e:
+                        self._add_log_entry(f"Error creando registro: {str(e)}", "WARNING")
+                # ===== FIN INTEGRACIÓN =====
+
                 success, message = self.automation_service.start_automation()
 
                 if not self._is_closing:
@@ -317,20 +343,79 @@ class AutomationTab:
         try:
             self._add_log_entry("Pausando automatización...")
             success, message = self.automation_service.pause_automation()
+
             if success:
                 self._update_automation_status("Pausada", self.colors['warning'])
                 self.widgets['start_button'].configure(state='normal', text='▶️ Iniciar Automatización')
                 self.widgets['pause_button'].configure(state='disabled')
                 self._add_log_entry("Automatización pausada exitosamente")
+
+                # ===== INTEGRACIÓN CON REGISTRO =====
+                # Actualizar registro como pausado (considerado exitoso)
+                if self.registry_tab and self.current_execution_record:
+                    try:
+                        end_time = datetime.now()
+                        self.registry_tab.update_execution_record(
+                            record_id=self.current_execution_record['id'],
+                            end_time=end_time,
+                            status="Exitoso",
+                            error_message=""
+                        )
+                        self._add_log_entry(f"Registro actualizado: Ejecutado exitosamente")
+                        self.current_execution_record = None
+                        self.execution_start_time = None
+                    except Exception as e:
+                        self._add_log_entry(f"Error actualizando registro: {str(e)}", "WARNING")
+                # ===== FIN INTEGRACIÓN =====
+
                 if not self._is_closing:
                     messagebox.showinfo("Éxito", message)
             else:
+                self._update_automation_status("Error", self.colors['error'])
                 self._add_log_entry(f"Error al pausar: {message}", "ERROR")
+
+                # ===== INTEGRACIÓN CON REGISTRO =====
+                # Actualizar registro como fallido
+                if self.registry_tab and self.current_execution_record:
+                    try:
+                        end_time = datetime.now()
+                        self.registry_tab.update_execution_record(
+                            record_id=self.current_execution_record['id'],
+                            end_time=end_time,
+                            status="Fallido",
+                            error_message=message
+                        )
+                        self._add_log_entry(f"Registro actualizado: Falla al pausar")
+                        self.current_execution_record = None
+                        self.execution_start_time = None
+                    except Exception as e:
+                        self._add_log_entry(f"Error actualizando registro: {str(e)}", "WARNING")
+                # ===== FIN INTEGRACIÓN =====
+
                 if not self._is_closing:
                     messagebox.showerror("Error", message)
         except Exception as e:
             error_msg = str(e)
             self._add_log_entry(f"Excepción al pausar: {error_msg}", "ERROR")
+
+            # ===== INTEGRACIÓN CON REGISTRO =====
+            # Actualizar registro con la excepción
+            if self.registry_tab and self.current_execution_record:
+                try:
+                    end_time = datetime.now()
+                    self.registry_tab.update_execution_record(
+                        record_id=self.current_execution_record['id'],
+                        end_time=end_time,
+                        status="Fallido",
+                        error_message=f"Excepción: {error_msg}"
+                    )
+                    self._add_log_entry(f"Registro actualizado: Excepción capturada")
+                    self.current_execution_record = None
+                    self.execution_start_time = None
+                except Exception as reg_error:
+                    self._add_log_entry(f"Error actualizando registro: {str(reg_error)}", "WARNING")
+            # ===== FIN INTEGRACIÓN =====
+
             if not self._is_closing:
                 messagebox.showerror("Error", f"Error al pausar automatización:\n{error_msg}")
 
@@ -345,12 +430,38 @@ class AutomationTab:
             self.widgets['pause_button'].configure(state='normal')
             self._add_log_entry("Automatización iniciada exitosamente")
             self._add_log_entry("Página web abierta en el navegador")
+
+            # ===== INTEGRACIÓN CON REGISTRO =====
+            # El registro ya se creó en _start_automation, aquí solo actualizamos el log
+            if self.registry_tab and self.current_execution_record:
+                self._add_log_entry("Esperando finalización para completar registro...")
+            # ===== FIN INTEGRACIÓN =====
+
             messagebox.showinfo("Éxito", f"{message}\n\nLa página web se ha abierto en su navegador.")
         else:
             self._update_automation_status("Error", self.colors['error'])
             self.widgets['start_button'].configure(state='normal', text='▶️ Iniciar Automatización')
             self.widgets['pause_button'].configure(state='disabled')
             self._add_log_entry(f"Error al iniciar: {message}", "ERROR")
+
+            # ===== INTEGRACIÓN CON REGISTRO =====
+            # Actualizar registro como fallido
+            if self.registry_tab and self.current_execution_record:
+                try:
+                    end_time = datetime.now()
+                    self.registry_tab.update_execution_record(
+                        record_id=self.current_execution_record['id'],
+                        end_time=end_time,
+                        status="Fallido",
+                        error_message=message
+                    )
+                    self._add_log_entry(f"Registro actualizado: Falla al iniciar")
+                    self.current_execution_record = None
+                    self.execution_start_time = None
+                except Exception as e:
+                    self._add_log_entry(f"Error actualizando registro: {str(e)}", "WARNING")
+            # ===== FIN INTEGRACIÓN =====
+
             messagebox.showerror("Error", message)
 
     def _update_automation_status(self, text, color):
@@ -369,5 +480,22 @@ class AutomationTab:
         """Limpia recursos al cerrar la pestaña"""
         self._is_closing = True
         self._add_log_entry("Cerrando sistema...")
+
+        # ===== INTEGRACIÓN CON REGISTRO =====
+        # Si hay una ejecución en curso, marcarla como interrumpida
+        if self.registry_tab and self.current_execution_record:
+            try:
+                end_time = datetime.now()
+                self.registry_tab.update_execution_record(
+                    record_id=self.current_execution_record['id'],
+                    end_time=end_time,
+                    status="Fallido",
+                    error_message="Ejecución interrumpida por cierre de aplicación"
+                )
+                self._add_log_entry("Registro actualizado: Ejecución interrumpida")
+            except Exception as e:
+                self._add_log_entry(f"Error finalizando registro: {str(e)}", "WARNING")
+        # ===== FIN INTEGRACIÓN =====
+
         self.automation_service.stop_all()
         time.sleep(0.05)  # Pequeña pausa para que los hilos terminen
