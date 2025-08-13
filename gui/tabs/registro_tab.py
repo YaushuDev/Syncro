@@ -286,7 +286,7 @@ class RegistroTab:
         self.widgets['record_count'].pack(anchor='e')
 
     def _create_records_table(self, parent):
-        """Crea tabla de registros"""
+        """Crea tabla de registros sin barra de desplazamiento horizontal"""
         table_container = tk.Frame(parent, bg=self.theme.colors['bg_primary'])
         table_container.grid(row=1, column=0, sticky='nsew', pady=(0, 10))
 
@@ -311,20 +311,14 @@ class RegistroTab:
             self.widgets['records_tree'].heading(col, text=heading)
             self.widgets['records_tree'].column(col, width=width)
 
-        # Scrollbars
+        # Solo scrollbar vertical
         v_scrollbar = ttk.Scrollbar(table_frame, orient='vertical',
                                     command=self.widgets['records_tree'].yview)
-        h_scrollbar = ttk.Scrollbar(table_frame, orient='horizontal',
-                                    command=self.widgets['records_tree'].xview)
 
-        self.widgets['records_tree'].configure(
-            yscrollcommand=v_scrollbar.set,
-            xscrollcommand=h_scrollbar.set
-        )
+        self.widgets['records_tree'].configure(yscrollcommand=v_scrollbar.set)
 
         self.widgets['records_tree'].pack(side='left', fill='both', expand=True)
         v_scrollbar.pack(side='right', fill='y')
-        h_scrollbar.pack(side='bottom', fill='x')
 
         self.widgets['records_tree'].bind('<<TreeviewSelect>>', self._on_record_select)
 

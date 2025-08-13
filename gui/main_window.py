@@ -30,7 +30,7 @@ class MainWindow:
     def setup_window(self):
         """Configurar las propiedades básicas de la ventana"""
         self.root.title("Syncro Bot - Sistema de Automatización y Reportes")
-        self.root.geometry("1100x600")
+        self.root.geometry("1300x750")
         self.root.resizable(True, True)
 
         # Configurar el icono de la ventana si existe
