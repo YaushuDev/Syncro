@@ -9,7 +9,7 @@ y diferentes tipos de reportes con integración completa al sistema de email.
 import os
 import threading
 from datetime import datetime
-from tkinter import messagebox, filedialog
+from tkinter import filedialog
 
 # Importaciones para Excel
 try:
