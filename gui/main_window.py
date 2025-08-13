@@ -1,10 +1,9 @@
 # main_window.py
 # Ubicación: /syncro_bot/gui/main_window.py
 """
-Ventana principal de la interfaz gráfica de Syncro Bot.
-Gestiona la configuración de la ventana, la creación del sistema de pestañas,
-el manejo correcto del cierre de la aplicación y las conexiones entre pestañas
-para integración completa del sistema de registro y envío de reportes.
+Ventana principal de Syncro Bot con scheduler automático integrado para reportes.
+Gestiona la configuración de la ventana, pestañas, conexiones entre componentes
+y el scheduler automático para envío programado de reportes Excel por correo.
 """
 
 from tkinter import ttk
@@ -13,20 +12,24 @@ from .tabs.automation_tab import AutomationTab
 from .tabs.email_tab import EmailTab
 from .tabs.profiles_tab import ProfilesTab
 from .tabs.registro_tab import RegistroTab
+from .components.profile_execution_service import ProfileScheduler
 
 
 class MainWindow:
     def __init__(self, root):
         self.root = root
         self.is_closing = False
+        self.profile_scheduler = None
+
         self.setup_window()
         self.create_tabs()
-        self.setup_integrations()  # ===== NUEVA FUNCIÓN =====
+        self.setup_integrations()
         self.setup_close_handler()
+        self._initialize_scheduler()
 
     def setup_window(self):
         """Configurar las propiedades básicas de la ventana"""
-        self.root.title("Syncro Bot")
+        self.root.title("Syncro Bot - Sistema de Automatización y Reportes")
         self.root.geometry("1100x600")
         self.root.resizable(True, True)
 
@@ -50,7 +53,7 @@ class MainWindow:
         print("  → Creando AutomationTab...")
         self.automation_tab = AutomationTab(self.notebook)
 
-        # 2. Pestaña de Perfiles (programación automática)
+        # 2. Pestaña de Perfiles (programación automática de reportes)
         print("  → Creando ProfilesTab...")
         self.profiles_tab = ProfilesTab(self.notebook)
 
@@ -64,7 +67,6 @@ class MainWindow:
 
         print("✅ Todas las pestañas creadas exitosamente")
 
-    # ===== NUEVA FUNCIÓN DE INTEGRACIÓN =====
     def setup_integrations(self):
         """Configura las integraciones entre pestañas"""
         print("Configurando integraciones entre pestañas...")
@@ -77,7 +79,7 @@ class MainWindow:
             else:
                 print("  ❌ Error: AutomationTab o RegistroTab no disponibles")
 
-            # 2. Conectar ProfilesTab con RegistroTab (para logging de ejecuciones automáticas)
+            # 2. Conectar ProfilesTab con RegistroTab (para logging de envíos de reportes)
             if hasattr(self, 'profiles_tab') and hasattr(self, 'registro_tab'):
                 self.profiles_tab.set_registry_tab(self.registro_tab)
                 print("  ✅ ProfilesTab → RegistroTab conectado")
@@ -100,9 +102,41 @@ class MainWindow:
             print(f"❌ Error durante la integración: {e}")
             # Continuar sin las integraciones - la app funciona básicamente sin ellas
 
-    # ===== FIN NUEVA FUNCIÓN =====
+    def _initialize_scheduler(self):
+        """Inicializa y arranca el scheduler automático de reportes"""
+        print("Configurando scheduler automático de reportes...")
 
-    # ===== NUEVA FUNCIÓN DE VERIFICACIÓN =====
+        try:
+            # Verificar que los componentes necesarios estén disponibles
+            if not hasattr(self, 'profiles_tab'):
+                print("  ❌ ProfilesTab no disponible - scheduler no iniciado")
+                return
+
+            # Obtener servicios del profiles_tab
+            profiles_manager = self.profiles_tab.profiles_manager
+            execution_service = self.profiles_tab.execution_service
+            report_service = self.profiles_tab.report_service
+
+            # Crear instancia del scheduler
+            self.profile_scheduler = ProfileScheduler(
+                profiles_manager=profiles_manager,
+                execution_service=execution_service,
+                report_service=report_service
+            )
+            print("  ✅ ProfileScheduler para reportes creado exitosamente")
+
+            # Iniciar scheduler automáticamente
+            success, message = self.profile_scheduler.start_scheduler()
+            if success:
+                print(f"  🚀 Scheduler de reportes iniciado: {message}")
+            else:
+                print(f"  ❌ Error iniciando scheduler: {message}")
+                self.profile_scheduler = None
+
+        except Exception as e:
+            print(f"❌ Error configurando scheduler: {e}")
+            self.profile_scheduler = None
+
     def _verify_integrations(self):
         """Verifica que las integraciones estén funcionando correctamente"""
         try:
@@ -134,8 +168,6 @@ class MainWindow:
         except Exception as e:
             print(f"⚠️ Error durante verificación: {e}")
 
-    # ===== FIN NUEVA FUNCIÓN =====
-
     def setup_close_handler(self):
         """Configura el manejo correcto del cierre de la aplicación"""
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -160,9 +192,19 @@ class MainWindow:
         print("🔄 Iniciando cierre seguro de Syncro Bot...")
 
         try:
-            # ===== LIMPIEZA MEJORADA DE PESTAÑAS =====
+            # DETENER SCHEDULER PRIMERO
+            if self.profile_scheduler:
+                print("  → Deteniendo ProfileScheduler de reportes...")
+                try:
+                    success, message = self.profile_scheduler.stop_scheduler()
+                    if success:
+                        print(f"    ✅ Scheduler de reportes detenido: {message}")
+                    else:
+                        print(f"    ⚠️ Error deteniendo scheduler: {message}")
+                except Exception as e:
+                    print(f"    ❌ Excepción deteniendo scheduler: {e}")
 
-            # 1. Limpiar pestaña de automatización
+            # Limpiar pestaña de automatización
             if hasattr(self, 'automation_tab') and self.automation_tab:
                 print("  → Limpiando AutomationTab...")
                 try:
@@ -173,14 +215,14 @@ class MainWindow:
                 except Exception as e:
                     print(f"    ⚠️ Error limpiando AutomationTab: {e}")
 
-            # 2. Limpiar pestaña de perfiles
+            # Limpiar pestaña de perfiles de reportes
             if hasattr(self, 'profiles_tab') and self.profiles_tab:
-                print("  → Limpiando ProfilesTab...")
+                print("  → Limpiando ProfilesTab (reportes)...")
                 try:
-                    # Detener cualquier ejecución en curso
+                    # Detener cualquier envío de reporte en curso
                     if hasattr(self.profiles_tab, 'execution_service'):
                         if self.profiles_tab.execution_service.is_busy():
-                            print("    → Deteniendo ejecución de perfil en curso...")
+                            print("    → Deteniendo envío de reporte en curso...")
 
                     if hasattr(self.profiles_tab, 'cleanup'):
                         self.profiles_tab.cleanup()
@@ -188,7 +230,7 @@ class MainWindow:
                 except Exception as e:
                     print(f"    ⚠️ Error limpiando ProfilesTab: {e}")
 
-            # 3. Limpiar pestaña de registro
+            # Limpiar pestaña de registro
             if hasattr(self, 'registro_tab') and self.registro_tab:
                 print("  → Limpiando RegistroTab...")
                 try:
@@ -202,7 +244,7 @@ class MainWindow:
                 except Exception as e:
                     print(f"    ⚠️ Error limpiando RegistroTab: {e}")
 
-            # 4. Limpiar pestaña de email
+            # Limpiar pestaña de email
             if hasattr(self, 'email_tab') and self.email_tab:
                 print("  → Limpiando EmailTab...")
                 try:
@@ -211,8 +253,6 @@ class MainWindow:
                     print("    ✅ EmailTab limpiado")
                 except Exception as e:
                     print(f"    ⚠️ Error limpiando EmailTab: {e}")
-
-            # ===== FIN LIMPIEZA MEJORADA =====
 
             # Pequeña pausa para permitir que los hilos daemon se terminen
             print("  → Esperando finalización de hilos...")
@@ -237,7 +277,7 @@ class MainWindow:
         return self.automation_tab if hasattr(self, 'automation_tab') else None
 
     def get_profiles_tab(self):
-        """Retorna la instancia de la pestaña de perfiles"""
+        """Retorna la instancia de la pestaña de perfiles de reportes"""
         return self.profiles_tab if hasattr(self, 'profiles_tab') else None
 
     def get_email_tab(self):
@@ -248,7 +288,45 @@ class MainWindow:
         """Retorna la instancia de la pestaña de registro"""
         return self.registro_tab if hasattr(self, 'registro_tab') else None
 
-    # ===== NUEVOS MÉTODOS DE UTILIDAD =====
+    # ===== MÉTODOS PARA SCHEDULER DE REPORTES =====
+    def get_scheduler(self):
+        """Retorna la instancia del scheduler de reportes"""
+        return self.profile_scheduler
+
+    def get_scheduler_status(self):
+        """Obtiene estado del scheduler de reportes"""
+        if not self.profile_scheduler:
+            return {'available': False, 'running': False, 'error': 'Scheduler de reportes no inicializado'}
+
+        try:
+            status = self.profile_scheduler.get_scheduler_status()
+            status['available'] = True
+            return status
+        except Exception as e:
+            return {'available': False, 'running': False, 'error': str(e)}
+
+    def restart_scheduler(self):
+        """Reinicia el scheduler de reportes"""
+        if not self.profile_scheduler:
+            return False, "Scheduler de reportes no disponible"
+
+        try:
+            # Detener si está corriendo
+            if self.profile_scheduler.is_running:
+                success, message = self.profile_scheduler.stop_scheduler()
+                if not success:
+                    return False, f"Error deteniendo scheduler: {message}"
+
+                # Esperar un momento
+                time.sleep(1)
+
+            # Reiniciar
+            success, message = self.profile_scheduler.start_scheduler()
+            return success, message
+
+        except Exception as e:
+            return False, f"Error reiniciando scheduler: {str(e)}"
+
     def is_system_ready(self):
         """Verifica si el sistema está completamente configurado"""
         try:
@@ -267,7 +345,10 @@ class MainWindow:
                 hasattr(self.registro_tab, 'email_tab') and self.registro_tab.email_tab
             ])
 
-            return tabs_ready and integrations_ready
+            # Verificar scheduler de reportes
+            scheduler_ready = self.profile_scheduler is not None and self.profile_scheduler.is_running
+
+            return tabs_ready and integrations_ready and scheduler_ready
 
         except Exception:
             return False
@@ -278,9 +359,10 @@ class MainWindow:
             status = {
                 'automation_running': False,
                 'email_configured': False,
-                'active_profiles': 0,
+                'active_report_profiles': 0,
                 'total_records': 0,
-                'integrations_ready': False
+                'integrations_ready': False,
+                'report_scheduler_running': False
             }
 
             # Estado de automatización
@@ -291,10 +373,10 @@ class MainWindow:
             if hasattr(self, 'email_tab') and self.email_tab:
                 status['email_configured'] = self.email_tab.is_email_configured()
 
-            # Perfiles activos
+            # Perfiles activos de reportes
             if hasattr(self, 'profiles_tab') and self.profiles_tab:
                 active_profiles = self.profiles_tab.get_active_profiles()
-                status['active_profiles'] = len(active_profiles)
+                status['active_report_profiles'] = len(active_profiles)
 
             # Total de registros
             if hasattr(self, 'registro_tab') and self.registro_tab:
@@ -303,6 +385,9 @@ class MainWindow:
 
             # Estado de integraciones
             status['integrations_ready'] = self.is_system_ready()
+
+            # Estado de scheduler de reportes
+            status['report_scheduler_running'] = bool(self.profile_scheduler and self.profile_scheduler.is_running)
 
             return status
 
@@ -339,22 +424,31 @@ class MainWindow:
         """Muestra resumen del estado del sistema al inicio"""
         try:
             print("\n" + "=" * 60)
-            print("🤖 SYNCRO BOT - RESUMEN DEL SISTEMA")
+            print("🤖 SYNCRO BOT - SISTEMA DE AUTOMATIZACIÓN Y REPORTES")
             print("=" * 60)
 
             status = self.get_system_status()
             if status:
                 print(f"🔧 Sistema integrado: {'✅ Sí' if status['integrations_ready'] else '❌ No'}")
                 print(f"📧 Email configurado: {'✅ Sí' if status['email_configured'] else '❌ No'}")
-                print(f"⚙️ Perfiles activos: {status['active_profiles']}")
-                print(f"📊 Registros totales: {status['total_records']}")
+                print(f"📊 Perfiles de reportes activos: {status['active_report_profiles']}")
+                print(f"📋 Registros totales: {status['total_records']}")
                 print(f"🤖 Automatización: {'🟢 Activa' if status['automation_running'] else '🟠 Inactiva'}")
+                print(
+                    f"⏰ Scheduler de Reportes: {'🟢 Ejecutándose' if status['report_scheduler_running'] else '🔴 Detenido'}")
             else:
                 print("⚠️ No se pudo obtener el estado del sistema")
 
             print("=" * 60)
             print("✅ Syncro Bot iniciado correctamente")
             print("💡 Utilice las pestañas para configurar y gestionar el sistema")
+
+            # Información de scheduler de reportes
+            if self.profile_scheduler and self.profile_scheduler.is_running:
+                print("📧 Los perfiles de reportes se enviarán automáticamente por correo")
+            else:
+                print("⚠️ Scheduler de reportes no está funcionando - perfiles no se ejecutarán automáticamente")
+
             print("=" * 60 + "\n")
 
             # Registrar inicio
@@ -362,4 +456,25 @@ class MainWindow:
 
         except Exception as e:
             print(f"⚠️ Error mostrando resumen: {e}")
-    # ===== FIN NUEVOS MÉTODOS =====
+
+    def get_next_scheduled_reports(self, limit=5):
+        """Obtiene información de los próximos reportes programados"""
+        if not self.profile_scheduler:
+            return []
+
+        try:
+            return self.profile_scheduler.get_next_scheduled_executions(limit)
+        except Exception as e:
+            print(f"Error obteniendo próximos reportes programados: {e}")
+            return []
+
+    def get_report_execution_history(self, limit=10):
+        """Obtiene historial de ejecuciones de reportes"""
+        if not self.profile_scheduler:
+            return []
+
+        try:
+            return self.profile_scheduler.get_execution_history(limit)
+        except Exception as e:
+            print(f"Error obteniendo historial de reportes: {e}")
+            return []

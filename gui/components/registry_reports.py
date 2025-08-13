@@ -375,7 +375,7 @@ class EmailReportService:
             if not success:
                 return False, f"Error generando Excel: {message}"
 
-            subject, body = self._prepare_email_content(report_title, records, report_type)
+            subject, body = self._prepare_email_content(report_title)
             email_success, email_message = self._send_email_with_attachment(subject, body, filename)
 
             self._cleanup_temp_file(filename)
@@ -384,50 +384,18 @@ class EmailReportService:
         except Exception as e:
             return False, f"Error enviando reporte: {str(e)}"
 
-    def _prepare_email_content(self, report_title, records, report_type):
-        """Prepara contenido del email"""
+    def _prepare_email_content(self, report_title):
+        """Prepara contenido del email simplificado"""
         subject = f"Syncro Bot - {report_title} - {datetime.now().strftime('%d/%m/%Y')}"
-        stats = self._calculate_report_statistics(records)
 
-        body = f"""Estimado/a,
+        body = """Estimado/a,
 
-Se adjunta el reporte de ejecuciones del sistema Syncro Bot correspondiente a: {report_type}
-
-RESUMEN EJECUTIVO:
-Total de Ejecuciones: {stats['total']}
-Ejecuciones Exitosas: {stats['successful']}
-Ejecuciones Fallidas: {stats['failed']}
-Ejecuciones Manuales: {stats['manual']}
-Ejecuciones Automáticas: {stats['automatic']}
-Tasa de Éxito: {stats['success_rate']:.1f}%
-
-PERÍODO DEL REPORTE:
-Fecha de Generación: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
-Tipo de Reporte: {report_type}
-
-El archivo adjunto contiene el detalle completo de todas las ejecuciones incluidas en este reporte.
+Se adjunta el reporte de ejecuciones del sistema Syncro Bot correspondiente.
 
 Saludos cordiales,
 Sistema Syncro Bot"""
 
         return subject, body
-
-    def _calculate_report_statistics(self, records):
-        """Calcula estadísticas para el reporte"""
-        total = len(records)
-        successful = len([r for r in records if r['estado'] == 'Exitoso'])
-        failed = len([r for r in records if r['estado'] == 'Fallido'])
-        manual = len([r for r in records if r['usuario'] == 'Usuario'])
-        automatic = len([r for r in records if r['usuario'] == 'Sistema'])
-
-        return {
-            'total': total,
-            'successful': successful,
-            'failed': failed,
-            'manual': manual,
-            'automatic': automatic,
-            'success_rate': (successful / total * 100) if total > 0 else 0
-        }
 
     def _send_email_with_attachment(self, subject, body, attachment_path):
         """Envía email con archivo adjunto"""
