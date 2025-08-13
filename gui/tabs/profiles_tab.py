@@ -94,30 +94,145 @@ class ProfilesTab:
         self._create_list_sections(right_column)
 
     def _create_form_sections(self, parent):
-        """Crea las secciones del formulario simplificadas con mejor espaciado"""
-        # Configurar filas
-        for i in range(3):
-            parent.grid_rowconfigure(i, weight=0 if i < 2 else 1)
+        """Crea las secciones del formulario con espaciado corregido"""
+        # Configurar filas - Solo 3 filas consecutivas
+        parent.grid_rowconfigure(0, weight=0)
+        parent.grid_rowconfigure(1, weight=0)
+        parent.grid_rowconfigure(2, weight=0)
+        parent.grid_rowconfigure(3, weight=1)  # Espaciador al final
         parent.grid_columnconfigure(0, weight=1)
 
-        # Secciones optimizadas con alturas reducidas
-        sections_config = [
-            ("basic_config", "⚙️ Configuración Básica",
-             lambda c: self.ui_coordinator.form_handler.create_basic_config_form(c),
-             True, 160),  # Reducido de 180 a 160
-            ("schedule", "⏰ Programación de Envío",
-             lambda c: self.ui_coordinator.form_handler.create_schedule_form(c),
-             False, 240),  # Reducido de 280 a 240
-            ("actions", "🎮 Acciones",
-             self._create_actions_content,
-             False, 200)  # Reducido de 220 a 200
-        ]
+        # Crear secciones usando el section_manager del ui_coordinator
+        # pero personalizando el espaciado
 
-        for i, (section_id, title, content_creator, expanded, height) in enumerate(sections_config):
-            self.ui_coordinator.section_manager.create_collapsible_section(
-                section_id, title, content_creator, row=i,
-                default_expanded=expanded, min_height=height
-            )
+        # Sección 1: Configuración Básica (fila 0)
+        self._create_custom_section(parent, "basic_config", "⚙️ Configuración Básica",
+                                    lambda c: self.ui_coordinator.form_handler.create_basic_config_form(c),
+                                    row=0, expanded=True, height=160, pady_bottom=10)
+
+        # Sección 2: Programación de Envío (fila 1)
+        self._create_custom_section(parent, "schedule", "⏰ Programación de Envío",
+                                    lambda c: self.ui_coordinator.form_handler.create_schedule_form(c),
+                                    row=1, expanded=False, height=240, pady_bottom=10)
+
+        # Sección 3: Acciones (fila 2)
+        self._create_custom_section(parent, "actions", "🎮 Acciones",
+                                    self._create_actions_content,
+                                    row=2, expanded=False, height=200, pady_bottom=0)
+
+    def _create_custom_section(self, parent, section_id, title, content_creator,
+                               row, expanded, height, pady_bottom):
+        """Crea una sección colapsable con control personalizado de espaciado"""
+        section_container = tk.Frame(parent, bg=self.theme.colors['bg_primary'])
+        section_container.configure(height=55)  # Altura cuando está colapsada
+        section_container.grid(row=row, column=0, sticky='ew', pady=(0, pady_bottom))
+        section_container.grid_columnconfigure(0, weight=1)
+        section_container.grid_propagate(False)
+
+        # Frame de la tarjeta
+        card = tk.Frame(section_container, bg=self.theme.colors['bg_primary'],
+                        relief='solid', bd=1)
+        card.configure(highlightbackground=self.theme.colors['border'],
+                       highlightcolor=self.theme.colors['border'],
+                       highlightthickness=1)
+        card.grid(row=0, column=0, sticky='ew')
+        card.grid_columnconfigure(0, weight=1)
+
+        # Header clickeable
+        header = tk.Frame(card, bg=self.theme.colors['bg_secondary'], height=45, cursor='hand2')
+        header.grid(row=0, column=0, sticky='ew')
+        header.grid_propagate(False)
+        header.grid_columnconfigure(0, weight=1)
+
+        # Contenido del header
+        header_content = tk.Frame(header, bg=self.theme.colors['bg_secondary'])
+        header_content.grid(row=0, column=0, sticky='ew', padx=15, pady=12)
+        header_content.grid_columnconfigure(0, weight=1)
+
+        # Título
+        title_label = tk.Label(header_content, text=title, bg=self.theme.colors['bg_secondary'],
+                               fg=self.theme.colors['text_primary'], font=('Arial', 12, 'bold'),
+                               cursor='hand2')
+        title_label.grid(row=0, column=0, sticky='w')
+
+        # Flecha indicadora
+        arrow_label = tk.Label(header_content, text="▶" if not expanded else "▼",
+                               bg=self.theme.colors['bg_secondary'], fg=self.theme.colors['accent'],
+                               font=('Arial', 10, 'bold'), cursor='hand2')
+        arrow_label.grid(row=0, column=1, sticky='e')
+
+        # Content area
+        content_frame = tk.Frame(card, bg=self.theme.colors['bg_primary'])
+        content_frame.grid_columnconfigure(0, weight=1)
+
+        # Crear contenido específico
+        content_creator(content_frame)
+
+        # Guardar referencias para el UI coordinator
+        if not hasattr(self.ui_coordinator, 'section_frames'):
+            self.ui_coordinator.section_frames = {}
+
+        self.ui_coordinator.section_frames[section_id] = {
+            'container': section_container,
+            'header': header,
+            'content': content_frame,
+            'arrow': arrow_label,
+            'expanded': expanded,
+            'min_height': height
+        }
+
+        # Estado inicial
+        if expanded:
+            content_frame.grid(row=1, column=0, sticky='ew')
+            section_container.configure(height=height)
+            section_container.grid_propagate(True)
+            if not hasattr(self.ui_coordinator, 'expanded_section'):
+                self.ui_coordinator.expanded_section = section_id
+
+        # Bind eventos
+        def toggle_section(event=None):
+            self._toggle_section(section_id)
+
+        header.bind("<Button-1>", toggle_section)
+        title_label.bind("<Button-1>", toggle_section)
+        arrow_label.bind("<Button-1>", toggle_section)
+
+    def _toggle_section(self, section_id):
+        """Alterna la visibilidad de una sección"""
+        if not hasattr(self.ui_coordinator, 'section_frames'):
+            return
+
+        current_section = self.ui_coordinator.section_frames[section_id]
+
+        if current_section['expanded']:
+            # Colapsar sección actual
+            current_section['content'].grid_remove()
+            current_section['arrow'].configure(text="▶")
+            current_section['expanded'] = False
+            current_section['container'].configure(height=55)
+            current_section['container'].grid_propagate(False)
+            if hasattr(self.ui_coordinator, 'expanded_section'):
+                self.ui_coordinator.expanded_section = None
+        else:
+            # Colapsar otra sección si está expandida
+            if hasattr(self.ui_coordinator, 'expanded_section') and self.ui_coordinator.expanded_section:
+                if self.ui_coordinator.expanded_section in self.ui_coordinator.section_frames:
+                    expanded_section = self.ui_coordinator.section_frames[self.ui_coordinator.expanded_section]
+                    expanded_section['content'].grid_remove()
+                    expanded_section['arrow'].configure(text="▶")
+                    expanded_section['expanded'] = False
+                    expanded_section['container'].configure(height=55)
+                    expanded_section['container'].grid_propagate(False)
+
+            # Expandir nueva sección
+            current_section['content'].grid(row=1, column=0, sticky='ew')
+            current_section['arrow'].configure(text="▼")
+            current_section['expanded'] = True
+            current_section['container'].configure(height=current_section['min_height'])
+            current_section['container'].grid_propagate(True)
+            self.ui_coordinator.expanded_section = section_id
+
+        self.frame.update_idletasks()
 
     def _create_actions_content(self, container):
         """Crea contenido de acciones"""
