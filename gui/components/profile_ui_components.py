@@ -405,7 +405,7 @@ class ProfileStatusDisplay:
         )
         self.widgets['total_count'].pack(side='right', padx=10, pady=8)
 
-        # Sistema de email
+        # Sistema de email - CAMBIO CRÍTICO: Estado inicial mejorado
         email_frame = tk.Frame(container, bg=self.theme.colors['bg_tertiary'])
         email_frame.pack(fill='x')
 
@@ -413,9 +413,10 @@ class ProfileStatusDisplay:
                  fg=self.theme.colors['text_primary'], font=('Arial', 10)).pack(
             side='left', padx=10, pady=8)
 
+        # CAMBIO: Estado inicial neutral en lugar de problemático
         self.widgets['email_status'] = tk.Label(
-            email_frame, text="Sin configurar", bg=self.theme.colors['bg_tertiary'],
-            fg=self.theme.colors['warning'], font=('Arial', 10, 'bold')
+            email_frame, text="⏳ Inicializando...", bg=self.theme.colors['bg_tertiary'],
+            fg=self.theme.colors['text_secondary'], font=('Arial', 10, 'bold')
         )
         self.widgets['email_status'].pack(side='right', padx=10, pady=8)
 
@@ -427,10 +428,10 @@ class ProfileStatusDisplay:
         self.widgets['total_count'].configure(text=str(stats.get('total', 0)))
 
     def update_email_status(self, email_tab):
-        """Actualiza el estado del sistema de email"""
+        """Actualiza el estado del sistema de email (MÉTODO MEJORADO)"""
         if not email_tab:
             self.widgets['email_status'].configure(
-                text="No disponible", fg=self.theme.colors['error']
+                text="❌ No disponible", fg=self.theme.colors['error']
             )
         elif email_tab.is_email_configured():
             self.widgets['email_status'].configure(
@@ -438,7 +439,7 @@ class ProfileStatusDisplay:
             )
         else:
             self.widgets['email_status'].configure(
-                text="❌ Sin configurar", fg=self.theme.colors['error']
+                text="⚠️ Sin configurar", fg=self.theme.colors['warning']
             )
 
 

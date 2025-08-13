@@ -33,6 +33,8 @@ class ProfilesTab:
         self.selected_profile = None
         self.registry_tab = None
         self.current_execution_record = None
+        self.integrations_ready = False
+        self.pending_email_update = False  # Nueva bandera para controlar actualizaciones pendientes
 
         # Inicializar
         self._initialize_components()
@@ -41,7 +43,7 @@ class ProfilesTab:
         """Inicializa todos los componentes"""
         self.create_tab()
         self._setup_services()
-        self.refresh_data()
+        self._load_initial_data()
 
     def create_tab(self):
         """Crear la pestaña de perfiles de reportes"""
@@ -289,6 +291,44 @@ class ProfilesTab:
             self.report_service.set_registry_tab(self.registry_tab)
             self.execution_service.set_registry_tab(self.registry_tab)
 
+    def _load_initial_data(self):
+        """Carga datos iniciales que no dependen de integraciones"""
+        try:
+            # Cargar solo datos básicos: perfiles y estadísticas
+            profiles = self.profiles_manager.get_profiles()
+            stats = self.profiles_manager.get_statistics()
+
+            self.ui_coordinator.update_profile_list(profiles)
+            self.ui_coordinator.update_statistics(stats)
+
+            # CAMBIO CRÍTICO: No mostrar estado inicial del email
+            # Dejar que se muestre con el valor por defecto del widget hasta que se establezcan las integraciones
+            # ELIMINADO: self.ui_coordinator.update_email_status(None)
+
+        except Exception as e:
+            print(f"Error cargando datos iniciales: {e}")
+            # En caso de error, usar valores por defecto
+            if self.ui_coordinator:
+                self.ui_coordinator.update_profile_list([])
+                self.ui_coordinator.update_statistics({'total': 0, 'active': 0})
+
+    def _deferred_email_status_update(self):
+        """Actualiza el estado del email de forma diferida usando root.after() (NUEVO MÉTODO)"""
+        if not self.integrations_ready:
+            return
+
+        try:
+            if hasattr(self, 'registry_tab') and self.registry_tab:
+                email_tab = getattr(self.registry_tab, 'email_tab', None)
+                self.ui_coordinator.update_email_status(email_tab)
+            else:
+                self.ui_coordinator.update_email_status(None)
+
+            self.pending_email_update = False
+            print("✅ Estado del email actualizado correctamente")
+        except Exception as e:
+            print(f"Error en actualización diferida del email: {e}")
+
     def _on_profile_selected(self, profile_name):
         """Maneja selección de perfil"""
         self.selected_profile = None
@@ -475,16 +515,19 @@ class ProfilesTab:
     def refresh_data(self):
         """Refresca todos los datos mostrados"""
         try:
+            # Siempre actualizar perfiles y estadísticas
             profiles = self.profiles_manager.get_profiles()
             stats = self.profiles_manager.get_statistics()
 
             self.ui_coordinator.update_profile_list(profiles)
             self.ui_coordinator.update_statistics(stats)
 
-            # Actualizar estado del email
-            if hasattr(self, 'registry_tab') and self.registry_tab:
-                email_tab = getattr(self.registry_tab, 'email_tab', None)
-                self.ui_coordinator.update_email_status(email_tab)
+            # Solo actualizar estado del email si las integraciones están listas
+            if self.integrations_ready:
+                # Usar root.after para diferir la actualización
+                if not self.pending_email_update:
+                    self.pending_email_update = True
+                    self.frame.after(10, self._deferred_email_status_update)
 
         except Exception as e:
             messagebox.showerror("Error", f"Error refrescando datos:\n{str(e)}")
@@ -492,13 +535,19 @@ class ProfilesTab:
     # ===== MÉTODOS DE INTEGRACIÓN =====
 
     def set_registry_tab(self, registry_tab):
-        """Establece la referencia al RegistroTab para logging y envío de reportes"""
+        """Establece la referencia al RegistroTab para logging y envío de reportes (MÉTODO MEJORADO)"""
         self.registry_tab = registry_tab
         self.report_service.set_registry_tab(registry_tab)
         self.execution_service.set_registry_tab(registry_tab)
 
-        # Actualizar estado del email después de conectar
-        self.refresh_data()
+        # Marcar integraciones como listas
+        self.integrations_ready = True
+
+        # CAMBIO CRÍTICO: Usar root.after() para diferir la actualización del estado del email
+        # Esto asegura que la actualización se haga en el siguiente ciclo del event loop
+        if not self.pending_email_update:
+            self.pending_email_update = True
+            self.frame.after(50, self._deferred_email_status_update)  # 50ms de delay
 
     def get_active_profiles(self):
         """Obtiene los perfiles activos"""
@@ -539,7 +588,7 @@ class ProfilesTab:
             active_profiles = self.profiles_manager.get_active_profiles()
 
             email_ready = False
-            if hasattr(self, 'registry_tab') and self.registry_tab:
+            if self.integrations_ready and hasattr(self, 'registry_tab') and self.registry_tab:
                 email_tab = getattr(self.registry_tab, 'email_tab', None)
                 email_ready = email_tab and email_tab.is_email_configured()
 
