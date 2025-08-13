@@ -11,7 +11,6 @@ import sys
 import signal
 from gui.main_window import MainWindow
 
-
 def signal_handler(signum, frame):
     """Maneja señales del sistema para cierre limpio"""
     print("\nCerrando Syncro Bot...")
