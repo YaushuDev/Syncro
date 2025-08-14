@@ -1,9 +1,10 @@
 # automation_service.py
 # Ubicación: /syncro_bot/gui/components/automation/automation_service.py
 """
-Servicio de automatización con login automático, selección de tres dropdowns y clic en dos botones.
-Maneja la configuración del navegador, proceso de login automático, selección automática
-de tres dropdowns (140_AUTO INSTALACION, 102_UDR_FS, PENDIENTE) y clic en botones de pestaña y acción.
+Servicio de automatización con login automático, selección de tres dropdowns, configuración de fechas y clic en dos botones.
+Maneja la configuración del navegador, proceso de login automático, selección automática de tres dropdowns
+(140_AUTO INSTALACION, 102_UDR_FS, PENDIENTE), configuración opcional de fechas Desde/Hasta después de los dropdowns,
+y clic en botones de pestaña y acción.
 """
 
 import threading
@@ -29,7 +30,7 @@ from .credentials_manager import CredentialsManager
 
 
 class AutomationService:
-    """Servicio de automatización con login automático, selección de tres dropdowns y clic en dos botones"""
+    """Servicio de automatización con login automático, selección de tres dropdowns, configuración de fechas y clic en dos botones"""
 
     def __init__(self, logger=None):
         self.is_running = False
@@ -44,6 +45,12 @@ class AutomationService:
             'username': '//*[@id="textfield-1039-inputEl"]',
             'password': '//*[@id="textfield-1040-inputEl"]',
             'login_button': '//*[@id="button-1041-btnEl"]'
+        }
+
+        # 🆕 XPaths para campos de fecha
+        self.date_field_xpaths = {
+            'date_from': '//*[@id="datefield-1140-inputEl"]',
+            'date_to': '//*[@id="datefield-1148-inputEl"]'
         }
 
         # XPaths para primer dropdown de despacho (140_AUTO INSTALACION)
@@ -98,6 +105,7 @@ class AutomationService:
         self.third_dropdown_wait_timeout = 20
         self.button_wait_timeout = 15
         self.action_button_wait_timeout = 15
+        self.date_configuration_timeout = 15  # 🆕 Timeout para configuración de fechas
 
     def _log(self, message, level="INFO"):
         """Log interno con fallback"""
@@ -170,8 +178,8 @@ class AutomationService:
             self._log(f"Error general: {str(e)}", "ERROR")
             return None, False, f"Error inesperado con Selenium: {str(e)}"
 
-    def _perform_login(self, driver, username, password):
-        """Realiza el proceso de login automático con esperas robustas y configuración completa"""
+    def _perform_login(self, driver, username, password, date_config=None):
+        """🔄 Realiza el proceso de automatización completo: login, tres dropdowns, configuración de fechas y botones"""
         try:
             # Navegar a la página
             self._log(f"Navegando a: {self.target_url}")
@@ -187,6 +195,77 @@ class AutomationService:
             # Espera adicional para elementos dinámicos
             time.sleep(2)
 
+            # PASO 1: LOGIN AUTOMÁTICO
+            login_success, login_message = self._handle_login_process(driver, wait, username, password)
+            if not login_success:
+                return False, login_message
+
+            # PASO 2: PRIMER DROPDOWN
+            self._log("Login exitoso, procediendo con primer dropdown...")
+            dropdown_success, dropdown_message = self._handle_dropdown_selection(driver)
+            if not dropdown_success:
+                self._log(f"Advertencia en primer dropdown: {dropdown_message}", "WARNING")
+                return True, f"Login exitoso. {dropdown_message}"
+
+            # PASO 3: BOTÓN DE PESTAÑA
+            self._log("Primer dropdown configurado, procediendo con clic en botón de pestaña...")
+            button_success, button_message = self._handle_tab_button_click(driver)
+            if not button_success:
+                self._log(f"Advertencia en botón de pestaña: {button_message}", "WARNING")
+                return True, f"Login y primer dropdown completados. {button_message}"
+
+            # PASO 4: SEGUNDO DROPDOWN
+            self._log("Botón de pestaña ejecutado, procediendo con segundo dropdown...")
+            second_dropdown_success, second_dropdown_message = self._handle_second_dropdown_selection(driver)
+            if not second_dropdown_success:
+                self._log(f"Advertencia en segundo dropdown: {second_dropdown_message}", "WARNING")
+                return True, f"Login, primer dropdown y botón completados. {second_dropdown_message}"
+
+            # PASO 5: TERCER DROPDOWN
+            self._log("Segundo dropdown configurado, procediendo con tercer dropdown...")
+            third_dropdown_success, third_dropdown_message = self._handle_third_dropdown_selection(driver)
+            if not third_dropdown_success:
+                self._log(f"Advertencia en tercer dropdown: {third_dropdown_message}", "WARNING")
+                return True, f"Login, dropdowns 1-2 y botón completados. {third_dropdown_message}"
+
+            # 🆕 PASO 6: CONFIGURACIÓN DE FECHAS (DESPUÉS de los tres dropdowns)
+            self._log("Tercer dropdown configurado, verificando configuración de fechas...")
+            date_success, date_message = self._handle_date_configuration(driver, date_config)
+            if not date_success:
+                self._log(f"Advertencia en configuración de fechas: {date_message}", "WARNING")
+                return True, f"Login, tres dropdowns y botón completados. {date_message}"
+
+            # PASO 7: BOTÓN DE ACCIÓN FINAL (ÚLTIMO PASO)
+            self._log("Configuración de fechas completada, procediendo con botón de acción final...")
+            action_button_success, action_button_message = self._handle_action_button_click(driver)
+            if not action_button_success:
+                self._log(f"Advertencia en botón de acción: {action_button_message}", "WARNING")
+                return True, f"Automatización casi completa (falta botón final). {action_button_message}"
+
+            # ✅ PROCESO COMPLETO EXITOSO
+            final_message = "Automatización completa exitosa: Login, tres dropdowns, configuración de fechas y botón final ejecutados."
+            if date_config and not date_config.get('skip_dates', True):
+                final_message += f" Fechas configuradas: {date_config.get('date_from', 'N/A')} - {date_config.get('date_to', 'N/A')}"
+
+            return True, final_message
+
+        except TimeoutException:
+            current_url = driver.current_url if driver else "N/A"
+            error_msg = f"Timeout: No se encontraron los elementos necesarios. URL actual: {current_url}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+        except NoSuchElementException:
+            error_msg = "No se encontraron los elementos necesarios en la página"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+        except Exception as e:
+            error_msg = f"Error durante la automatización: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
+    def _handle_login_process(self, driver, wait, username, password):
+        """Maneja el proceso de login automático"""
+        try:
             # Buscar y llenar campo de usuario con múltiples intentos
             self._log("Buscando campo de usuario...")
             username_field = wait.until(
@@ -238,65 +317,177 @@ class AutomationService:
 
             # Verificar resultado del login con múltiples métodos
             login_success, login_message = self._verify_login_success(driver, wait)
+            return login_success, login_message
 
-            if not login_success:
-                return False, login_message
-
-            # Si el login fue exitoso, proceder con la selección del primer dropdown
-            self._log("Login exitoso, procediendo con primer dropdown...")
-            dropdown_success, dropdown_message = self._handle_dropdown_selection(driver)
-
-            if not dropdown_success:
-                self._log(f"Advertencia en primer dropdown: {dropdown_message}", "WARNING")
-                return True, f"Login exitoso. {dropdown_message}"
-
-            # Si el primer dropdown fue exitoso, proceder con el clic en el botón de pestaña
-            self._log("Primer dropdown configurado, procediendo con clic en botón de pestaña...")
-            button_success, button_message = self._handle_tab_button_click(driver)
-
-            if not button_success:
-                self._log(f"Advertencia en botón de pestaña: {button_message}", "WARNING")
-                return True, f"Login y primer dropdown completados. {button_message}"
-
-            # Después del botón de pestaña, proceder con el segundo dropdown
-            self._log("Botón de pestaña ejecutado, procediendo con segundo dropdown...")
-            second_dropdown_success, second_dropdown_message = self._handle_second_dropdown_selection(driver)
-
-            if not second_dropdown_success:
-                self._log(f"Advertencia en segundo dropdown: {second_dropdown_message}", "WARNING")
-                return True, f"Login, primer dropdown y botón completados. {second_dropdown_message}"
-
-            # Después del segundo dropdown, proceder con el tercer dropdown
-            self._log("Segundo dropdown configurado, procediendo con tercer dropdown...")
-            third_dropdown_success, third_dropdown_message = self._handle_third_dropdown_selection(driver)
-
-            if not third_dropdown_success:
-                self._log(f"Advertencia en tercer dropdown: {third_dropdown_message}", "WARNING")
-                return True, f"Login, dropdowns 1-2 y botón completados. {third_dropdown_message}"
-
-            # Después del tercer dropdown, proceder con el botón de acción final
-            self._log("Tercer dropdown configurado, procediendo con botón de acción final...")
-            action_button_success, action_button_message = self._handle_action_button_click(driver)
-
-            if not action_button_success:
-                self._log(f"Advertencia en botón de acción: {action_button_message}", "WARNING")
-                return True, f"Login, tres dropdowns y botón de pestaña completados. {action_button_message}"
-
-            return True, f"Automatización completa exitosa: Login, tres dropdowns y ambos botones ejecutados. {action_button_message}"
-
-        except TimeoutException:
-            current_url = driver.current_url if driver else "N/A"
-            error_msg = f"Timeout: No se encontraron los elementos de login. URL actual: {current_url}"
-            self._log(error_msg, "ERROR")
-            return False, error_msg
-        except NoSuchElementException:
-            error_msg = "No se encontraron los campos de login en la página"
-            self._log(error_msg, "ERROR")
-            return False, error_msg
         except Exception as e:
-            error_msg = f"Error durante el login: {str(e)}"
+            error_msg = f"Error en proceso de login: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg
+
+    def _handle_date_configuration(self, driver, date_config):
+        """🆕 Maneja la configuración de fechas Desde/Hasta"""
+        try:
+            # Verificar si se debe omitir configuración de fechas
+            if not date_config or date_config.get('skip_dates', True):
+                self._log("📅 Configuración de fechas OMITIDA según configuración")
+                return True, "Configuración de fechas omitida (mantener valores actuales)"
+
+            self._log("📅 Iniciando configuración de fechas...")
+            wait = WebDriverWait(driver, self.date_configuration_timeout)
+
+            date_from = date_config.get('date_from', '').strip()
+            date_to = date_config.get('date_to', '').strip()
+
+            # Si no hay fechas que configurar, salir exitosamente
+            if not date_from and not date_to:
+                self._log("📅 No hay fechas específicas para configurar")
+                return True, "Sin fechas específicas para configurar"
+
+            results = []
+
+            # CONFIGURAR FECHA DESDE
+            if date_from:
+                from_success, from_message = self._configure_date_field(
+                    driver, wait, 'date_from', date_from, "Desde"
+                )
+                results.append(f"Desde: {from_message}")
+                if not from_success:
+                    self._log(f"⚠️ Error en fecha Desde: {from_message}", "WARNING")
+
+            # CONFIGURAR FECHA HASTA
+            if date_to:
+                to_success, to_message = self._configure_date_field(
+                    driver, wait, 'date_to', date_to, "Hasta"
+                )
+                results.append(f"Hasta: {to_message}")
+                if not to_success:
+                    self._log(f"⚠️ Error en fecha Hasta: {to_message}", "WARNING")
+
+            # Espera final para que los cambios se procesen
+            time.sleep(2)
+
+            # Verificar valores finales
+            self._verify_date_configuration(driver)
+
+            # Determinar resultado general
+            if results:
+                final_message = f"Configuración de fechas completada: {' | '.join(results)}"
+                self._log(f"✅ {final_message}")
+                return True, final_message
+            else:
+                return True, "Configuración de fechas procesada (sin cambios específicos)"
+
+        except Exception as e:
+            error_msg = f"Error en configuración de fechas: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
+    def _configure_date_field(self, driver, wait, field_key, date_value, field_name):
+        """Configura un campo de fecha específico escribiendo el texto y presionando ENTER"""
+        try:
+            from selenium.webdriver.common.keys import Keys
+
+            xpath = self.date_field_xpaths[field_key]
+            self._log(f"📅 Configurando fecha {field_name}: {date_value}")
+
+            # Buscar el campo de fecha
+            try:
+                date_field = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, xpath))
+                )
+                self._log(f"✅ Campo de fecha {field_name} encontrado")
+            except TimeoutException:
+                return False, f"Campo de fecha {field_name} no encontrado"
+
+            # Verificar estado actual del campo
+            try:
+                current_value = date_field.get_attribute('value')
+                self._log(f"📋 Valor actual del campo {field_name}: '{current_value}'")
+
+                # Si ya tiene el valor correcto, no hacer nada
+                if current_value == date_value:
+                    self._log(f"✅ Campo {field_name} ya tiene el valor correcto")
+                    return True, f"Ya configurado con {date_value}"
+            except Exception as e:
+                self._log(f"No se pudo leer valor actual de {field_name}: {e}", "DEBUG")
+
+            # Hacer scroll al campo si es necesario
+            driver.execute_script("arguments[0].scrollIntoView(true);", date_field)
+            time.sleep(1)
+
+            # Hacer clic en el campo para enfocarlo
+            try:
+                date_field.click()
+                time.sleep(0.5)
+                self._log(f"🎯 Campo {field_name} enfocado")
+            except Exception as e:
+                self._log(f"Advertencia enfocando campo {field_name}: {e}", "WARNING")
+
+            # Limpiar campo actual (seleccionar todo y borrar)
+            try:
+                date_field.send_keys(Keys.CONTROL + "a")  # Seleccionar todo
+                time.sleep(0.3)
+                date_field.send_keys(Keys.DELETE)  # Borrar contenido
+                time.sleep(0.5)
+                self._log(f"🧹 Campo {field_name} limpiado")
+            except Exception as e:
+                self._log(f"Advertencia limpiando campo {field_name}: {e}", "WARNING")
+
+            # Ingresar nueva fecha y presionar ENTER
+            try:
+                date_field.send_keys(date_value)
+                time.sleep(0.5)
+                self._log(f"⌨️ Fecha {field_name} ingresada: {date_value}")
+
+                # Presionar ENTER para confirmar la fecha
+                date_field.send_keys(Keys.ENTER)
+                time.sleep(1)
+                self._log(f"⏎ ENTER presionado en campo {field_name}")
+
+            except Exception as e:
+                return False, f"Error ingresando fecha en {field_name}: {str(e)}"
+
+            # Verificar que se haya establecido correctamente después del ENTER
+            try:
+                # Esperar un poco más para que procese el ENTER
+                time.sleep(1.5)
+                final_value = date_field.get_attribute('value')
+                self._log(f"🔍 Valor final en campo {field_name}: '{final_value}'")
+
+                if final_value == date_value:
+                    return True, f"Configurado exitosamente con {date_value}"
+                else:
+                    # A veces el formato puede cambiar, verificar si contiene la fecha
+                    if date_value in final_value or final_value in date_value:
+                        return True, f"Configurado con formato {final_value} (basado en {date_value})"
+                    else:
+                        return False, f"Valor no se estableció correctamente. Esperado: {date_value}, Actual: {final_value}"
+            except Exception as e:
+                # Si no podemos verificar, asumir éxito
+                self._log(f"No se pudo verificar valor final de {field_name}: {e}", "WARNING")
+                return True, f"Fecha {date_value} enviada con ENTER (verificación parcial)"
+
+        except Exception as e:
+            error_msg = f"Error configurando fecha {field_name}: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
+    def _verify_date_configuration(self, driver):
+        """Verifica la configuración final de ambas fechas"""
+        try:
+            self._log("🔍 Verificando configuración final de fechas...")
+
+            for field_key, field_name in [('date_from', 'Desde'), ('date_to', 'Hasta')]:
+                try:
+                    xpath = self.date_field_xpaths[field_key]
+                    date_field = driver.find_element(By.XPATH, xpath)
+                    final_value = date_field.get_attribute('value')
+                    self._log(f"📋 Fecha {field_name} final: '{final_value}'")
+                except Exception as e:
+                    self._log(f"No se pudo verificar fecha {field_name}: {e}", "WARNING")
+
+        except Exception as e:
+            self._log(f"Error en verificación final de fechas: {e}", "WARNING")
 
     def _handle_dropdown_selection(self, driver):
         """Maneja la selección automática del primer dropdown de despacho (140_AUTO INSTALACION)"""
@@ -911,8 +1102,8 @@ class AutomationService:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    def start_automation(self, username=None, password=None):
-        """Inicia el proceso de automatización completo con login, tres dropdowns y ambos botones"""
+    def start_automation(self, username=None, password=None, date_config=None):
+        """🔄 Inicia el proceso de automatización completo: login, tres dropdowns, configuración de fechas y ambos botones"""
         try:
             with self._lock:
                 if self.is_running:
@@ -923,7 +1114,7 @@ class AutomationService:
                     self._log("Selenium no disponible, usando método básico")
                     webbrowser.open(self.target_url)
                     self.is_running = True
-                    return True, "Automatización iniciada (modo básico - sin login automático)"
+                    return True, "Automatización iniciada (modo básico - sin login automático ni configuración de fechas)"
 
                 # Verificar credenciales
                 if not username or not password:
@@ -940,7 +1131,18 @@ class AutomationService:
                 if not valid:
                     return False, f"Credenciales inválidas: {message}"
 
-                self._log("Iniciando proceso de automatización completa...")
+                # 🆕 Procesar configuración de fechas
+                if not date_config:
+                    date_config = {'skip_dates': True}
+
+                self._log(
+                    "Iniciando proceso de automatización completa: login, tres dropdowns, configuración de fechas y botones...")
+                if date_config.get('skip_dates', True):
+                    self._log("📅 Configuración de fechas: OMITIR")
+                else:
+                    date_from = date_config.get('date_from', 'No especificada')
+                    date_to = date_config.get('date_to', 'No especificada')
+                    self._log(f"📅 Configuración de fechas: Desde={date_from}, Hasta={date_to}")
 
                 # Configurar driver
                 self._log("Configurando navegador...")
@@ -949,10 +1151,10 @@ class AutomationService:
                     return False, setup_message
 
                 self.driver = driver
-                self._log("Navegador configurado, iniciando login y configuración completa...")
+                self._log("Navegador configurado, iniciando automatización completa...")
 
-                # Realizar login y configuración completa
-                login_success, login_message = self._perform_login(driver, username, password)
+                # 🔄 Realizar login y configuración completa (incluyendo fechas)
+                login_success, login_message = self._perform_login(driver, username, password, date_config)
                 if not login_success:
                     self._log(f"Proceso falló: {login_message}", "ERROR")
                     self._cleanup_driver()
@@ -1007,8 +1209,8 @@ class AutomationService:
             self.is_running = False
             self._log("Todas las operaciones de automatización detenidas")
 
-    def test_credentials(self, username, password):
-        """Prueba las credenciales ejecutando el proceso completo de automatización"""
+    def test_credentials(self, username, password, date_config=None):
+        """🔄 Prueba las credenciales ejecutando el proceso completo: login, dropdowns, fechas y botones"""
         try:
             if not SELENIUM_AVAILABLE:
                 return False, "Selenium no está disponible para probar credenciales"
@@ -1018,7 +1220,11 @@ class AutomationService:
             if not valid:
                 return False, message
 
-            self._log("Iniciando prueba completa de automatización...")
+            # 🆕 Si no se proporciona configuración de fechas, usar omitir
+            if not date_config:
+                date_config = {'skip_dates': True}
+
+            self._log("Iniciando prueba completa de automatización: login, dropdowns, fechas y botones...")
 
             # Configurar driver temporal
             driver, success, setup_message = self._setup_chrome_driver()
@@ -1027,8 +1233,8 @@ class AutomationService:
 
             try:
                 self._log("Driver configurado, ejecutando prueba completa...")
-                # Realizar prueba completa (login, tres dropdowns y ambos botones)
-                automation_success, automation_message = self._perform_login(driver, username, password)
+                # 🔄 Realizar prueba completa (login, tres dropdowns, configuración de fechas y ambos botones)
+                automation_success, automation_message = self._perform_login(driver, username, password, date_config)
 
                 if automation_success:
                     self._log("Prueba completa de automatización exitosa")
@@ -1132,6 +1338,52 @@ class AutomationService:
         except Exception as e:
             self._log(f"Error obteniendo valores de dropdowns: {e}", "WARNING")
             return None
+
+    # 🆕 MÉTODOS PARA MANEJO MANUAL DE FECHAS
+
+    def get_current_date_values(self):
+        """Obtiene los valores actuales de los campos de fecha"""
+        if not self.driver or not self.is_running:
+            return None
+
+        try:
+            values = {}
+
+            # Campo Desde
+            try:
+                date_from_input = self.driver.find_element(By.XPATH, self.date_field_xpaths['date_from'])
+                values['date_from'] = date_from_input.get_attribute('value')
+                self._log(f"Valor actual fecha Desde: '{values['date_from']}'")
+            except Exception as e:
+                self._log(f"Error obteniendo valor de fecha Desde: {e}", "WARNING")
+                values['date_from'] = None
+
+            # Campo Hasta
+            try:
+                date_to_input = self.driver.find_element(By.XPATH, self.date_field_xpaths['date_to'])
+                values['date_to'] = date_to_input.get_attribute('value')
+                self._log(f"Valor actual fecha Hasta: '{values['date_to']}'")
+            except Exception as e:
+                self._log(f"Error obteniendo valor de fecha Hasta: {e}", "WARNING")
+                values['date_to'] = None
+
+            return values
+        except Exception as e:
+            self._log(f"Error obteniendo valores de fechas: {e}", "WARNING")
+            return None
+
+    def configure_date_manually(self, date_config):
+        """Configura fechas manualmente en automatización activa"""
+        if not self.driver or not self.is_running:
+            return False, "No hay automatización activa"
+
+        try:
+            date_success, date_message = self._handle_date_configuration(self.driver, date_config)
+            return date_success, date_message
+        except Exception as e:
+            error_msg = f"Error configurando fechas manualmente: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
 
     def click_tab_button_manually(self):
         """Ejecuta solo el clic en el botón de pestaña (para uso manual)"""

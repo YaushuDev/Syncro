@@ -1,9 +1,9 @@
 # automation_tab.py
 # Ubicación: /syncro_bot/gui/tabs/automation_tab.py
 """
-Pestaña de automatización refactorizada para Syncro Bot.
-Coordina todos los componentes de automatización: credenciales, servicio,
-UI y logging. Mantiene la interfaz limpia y maneja la comunicación
+Pestaña de automatización refactorizada para Syncro Bot con configuración de fechas.
+Coordina todos los componentes de automatización: credenciales, configuración de fechas,
+servicio, UI y logging. Mantiene la interfaz limpia y maneja la comunicación
 entre componentes y la integración con el sistema de registro.
 """
 
@@ -14,6 +14,7 @@ from datetime import datetime
 
 # Importar componentes de automatización
 from ..components.automation.credentials_manager import CredentialsManager
+from ..components.automation.date_config_manager import DateConfigManager
 from ..components.automation.automation_service import AutomationService
 from ..components.automation.automation_ui_components import (
     AutomationTheme, AutomationUIFactory, CollapsibleSection
@@ -22,7 +23,7 @@ from ..components.automation.automation_logger import AutomationLoggerFactory, L
 
 
 class AutomationTab:
-    """Pestaña de automatización refactorizada con componentes modulares"""
+    """Pestaña de automatización refactorizada con componentes modulares y configuración de fechas"""
 
     def __init__(self, parent_notebook):
         self.parent = parent_notebook
@@ -30,6 +31,7 @@ class AutomationTab:
 
         # Componentes principales
         self.credentials_manager = CredentialsManager()
+        self.date_config_manager = DateConfigManager()
         self.automation_service = None
         self.logger = None
 
@@ -97,13 +99,15 @@ class AutomationTab:
 
         # Configurar filas
         left_column.grid_rowconfigure(0, weight=0)  # Credenciales
-        left_column.grid_rowconfigure(1, weight=0)  # Estado
-        left_column.grid_rowconfigure(2, weight=0)  # Controles
-        left_column.grid_rowconfigure(3, weight=1)  # Espaciador
+        left_column.grid_rowconfigure(1, weight=0)  # 🆕 Configuración de fechas
+        left_column.grid_rowconfigure(2, weight=0)  # Estado
+        left_column.grid_rowconfigure(3, weight=0)  # Controles
+        left_column.grid_rowconfigure(4, weight=1)  # Espaciador
         left_column.grid_columnconfigure(0, weight=1)
 
         # Crear secciones usando componentes modulares
         self._create_credentials_section(left_column)
+        self._create_date_config_section(left_column)  # 🆕 Nueva sección
         self._create_status_section(left_column)
         self._create_controls_section(left_column)
 
@@ -145,12 +149,33 @@ class AutomationTab:
         credentials_form.set_button_command('save_credentials_button', self._save_credentials)
         credentials_form.set_button_command('clear_credentials_button', self._clear_credentials)
 
+    def _create_date_config_section(self, parent):
+        """🆕 Crea sección de configuración de fechas usando componentes modulares"""
+        section = AutomationUIFactory.create_collapsible_section(
+            parent, "date_config", "📅 Configuración de Fechas", self.theme
+        )
+        content = section.create(row=1, min_height=220, default_expanded=False)
+        section.set_toggle_callback(self._on_section_toggle)
+        self.section_frames["date_config"] = section
+
+        # Crear formulario de configuración de fechas
+        date_config_form = AutomationUIFactory.create_date_config_form(content, self.theme)
+        date_config_widgets = date_config_form.create()
+        self.ui_components.update(date_config_widgets)
+
+        # Configurar comandos de botones
+        date_config_form.set_button_command('set_today_button', self._set_today_dates)
+        date_config_form.set_button_command('clear_dates_button', self._clear_dates)
+
+        # Guardar referencia al formulario para métodos específicos
+        self.date_config_form = date_config_form
+
     def _create_status_section(self, parent):
         """Crea sección de estado usando componentes modulares"""
         section = AutomationUIFactory.create_collapsible_section(
             parent, "status", "📊 Estado del Sistema", self.theme
         )
-        content = section.create(row=1, min_height=150, default_expanded=False)
+        content = section.create(row=2, min_height=150, default_expanded=False)
         section.set_toggle_callback(self._on_section_toggle)
         self.section_frames["status"] = section
 
@@ -167,7 +192,7 @@ class AutomationTab:
         section = AutomationUIFactory.create_collapsible_section(
             parent, "controls", "🎮 Controles de Automatización", self.theme
         )
-        content = section.create(row=2, min_height=180, default_expanded=False)
+        content = section.create(row=3, min_height=180, default_expanded=False)
         section.set_toggle_callback(self._on_section_toggle)
         self.section_frames["controls"] = section
 
@@ -188,14 +213,20 @@ class AutomationTab:
         # Cargar credenciales guardadas
         self._load_saved_credentials()
 
+        # 🆕 Cargar configuración de fechas guardada
+        self._load_saved_date_config()
+
         # Agregar mensajes iniciales al log
-        self.logger.info("🚀 Sistema de automatización con login automático iniciado")
-        self.logger.info("🔧 Configuración: Esperas robustas y detección inteligente de carga")
+        self.logger.info("🚀 Sistema de automatización con login automático y configuración de fechas iniciado")
+        self.logger.info("🔧 Configuración: Esperas robustas, detección inteligente y fechas configurables")
 
         if self.automation_service.is_selenium_available():
-            self.logger.info("✅ Selenium disponible - Login automático habilitado")
+            self.logger.info("✅ Selenium disponible - Login automático y configuración de fechas habilitados")
         else:
             self.logger.warning("⚠️ Selenium no disponible - Solo modo navegador básico")
+
+        # Mostrar estado inicial de fechas
+        self._log_date_config_status()
 
     def _on_section_toggle(self, section_id, is_expanded):
         """Maneja toggle de secciones - solo una expandida a la vez"""
@@ -284,6 +315,100 @@ class AutomationTab:
         except Exception as e:
             self.logger.warning(f"Error cargando credenciales: {e}")
 
+    # 🆕 MÉTODOS PARA CONFIGURACIÓN DE FECHAS
+
+    def _load_saved_date_config(self):
+        """Carga configuración de fechas guardada al iniciar"""
+        try:
+            config = self.date_config_manager.load_config()
+            if config:
+                self.date_config_form.set_date_config(config)
+                self.logger.info("📅 Configuración de fechas cargada desde archivo seguro")
+            else:
+                self.logger.info("📅 Usando configuración de fechas por defecto (sin fechas)")
+        except Exception as e:
+            self.logger.warning(f"Error cargando configuración de fechas: {e}")
+
+    def _save_current_date_config(self):
+        """Guarda la configuración actual de fechas"""
+        try:
+            config = self.date_config_form.get_date_config()
+            success, message = self.date_config_manager.save_config(config)
+
+            if success:
+                self.logger.info(f"💾 {message}")
+                return True
+            else:
+                self.logger.error(f"❌ Error guardando fechas: {message}")
+                return False
+        except Exception as e:
+            self.logger.error(f"❌ Excepción guardando configuración de fechas: {e}")
+            return False
+
+    def _validate_current_date_config(self):
+        """Valida la configuración actual de fechas"""
+        try:
+            config = self.date_config_form.get_date_config()
+            is_valid, message = self.date_config_manager.validate_config(config)
+
+            if not is_valid:
+                self.logger.warning(f"⚠️ Configuración de fechas inválida: {message}")
+                messagebox.showerror("Configuración de Fechas Inválida", message)
+                return False
+
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ Error validando fechas: {e}")
+            messagebox.showerror("Error", f"Error validando fechas: {str(e)}")
+            return False
+
+    def _get_date_config_for_automation(self):
+        """Obtiene configuración de fechas para enviar al automation_service"""
+        try:
+            config = self.date_config_form.get_date_config()
+
+            # Guardar configuración automáticamente antes de usarla
+            self._save_current_date_config()
+
+            return config
+        except Exception as e:
+            self.logger.error(f"❌ Error obteniendo configuración de fechas: {e}")
+            return {'skip_dates': True}  # Fallback seguro
+
+    def _log_date_config_status(self):
+        """Muestra el estado actual de configuración de fechas en el log"""
+        try:
+            config = self.date_config_form.get_date_config()
+
+            if config['skip_dates']:
+                self.logger.info("📅 Configuración de fechas: OMITIR (comportamiento actual)")
+            else:
+                date_from = config.get('date_from', 'No especificada')
+                date_to = config.get('date_to', 'No especificada')
+                self.logger.info(f"📅 Configuración de fechas: Desde={date_from}, Hasta={date_to}")
+        except Exception as e:
+            self.logger.warning(f"Error mostrando estado de fechas: {e}")
+
+    def _set_today_dates(self):
+        """Establece fechas de hoy en ambos campos"""
+        try:
+            self.date_config_form.set_today_dates()
+            self.logger.info("📅 Fechas establecidas a HOY")
+            self._log_date_config_status()
+        except Exception as e:
+            self.logger.error(f"❌ Error estableciendo fecha de hoy: {e}")
+
+    def _clear_dates(self):
+        """Limpia los campos de fecha"""
+        try:
+            self.date_config_form.clear_dates()
+            self.logger.info("🗑️ Campos de fecha limpiados")
+            self._log_date_config_status()
+        except Exception as e:
+            self.logger.error(f"❌ Error limpiando fechas: {e}")
+
+    # MÉTODOS EXISTENTES DE CREDENCIALES (sin cambios)
+
     def _test_credentials(self):
         """Prueba las credenciales usando componentes"""
         if not self.automation_service.is_selenium_available():
@@ -369,8 +494,12 @@ class AutomationTab:
                 messagebox.showerror("Error", f"Error eliminando credenciales: {clear_message}")
 
     def _start_automation(self):
-        """Inicia la automatización usando componentes"""
+        """🔄 Inicia la automatización con configuración de fechas"""
         if self._is_closing:
+            return
+
+        # 🆕 Validar configuración de fechas antes de iniciar
+        if not self._validate_current_date_config():
             return
 
         username, password = self._get_credentials_from_form()
@@ -384,27 +513,36 @@ class AutomationTab:
             username = credentials.get('username')
             password = credentials.get('password')
 
+        # 🆕 Obtener configuración de fechas
+        date_config = self._get_date_config_for_automation()
+
         def start_thread():
             try:
                 if self._is_closing:
                     return
 
-                self.logger.log_automation_start({'username': username})
+                self.logger.log_automation_start({'username': username, 'date_config': date_config})
 
                 # Registrar inicio de ejecución
                 if self.registry_tab:
                     try:
                         self.execution_start_time = datetime.now()
+                        profile_name = "Manual (Con Login"
+                        if not date_config.get('skip_dates', True):
+                            profile_name += " + Fechas"
+                        profile_name += ")"
+
                         self.current_execution_record = self.registry_tab.add_execution_record(
                             start_time=self.execution_start_time,
-                            profile_name="Manual (Con Login)",
+                            profile_name=profile_name,
                             user_type="Usuario"
                         )
                         self.logger.info(f"Registro de ejecución creado: ID {self.current_execution_record['id']}")
                     except Exception as e:
                         self.logger.warning(f"Error creando registro: {str(e)}")
 
-                success, message = self.automation_service.start_automation(username, password)
+                # 🆕 Iniciar automatización con configuración de fechas
+                success, message = self.automation_service.start_automation(username, password, date_config)
 
                 if not self._is_closing:
                     self.frame.after(0, lambda: self._handle_start_result(success, message))
@@ -435,6 +573,7 @@ class AutomationTab:
             if self.automation_service.is_selenium_available():
                 display_message += "🎯 Características avanzadas activas:\n"
                 display_message += "• Login automático completado\n"
+                display_message += "• Configuración de fechas aplicada\n"
                 display_message += "• Esperas robustas implementadas\n"
                 display_message += "• Detección inteligente de carga\n"
                 display_message += "• Navegador controlado automáticamente\n\n"
@@ -519,10 +658,53 @@ class AutomationTab:
         """Obtiene el estado actual de la automatización"""
         return self.automation_service.get_status()
 
+    # 🆕 MÉTODOS PÚBLICOS PARA CONFIGURACIÓN DE FECHAS
+
+    def get_current_date_config(self):
+        """Obtiene la configuración actual de fechas"""
+        try:
+            return self.date_config_form.get_date_config()
+        except Exception as e:
+            self.logger.warning(f"Error obteniendo configuración de fechas: {e}")
+            return {'skip_dates': True}
+
+    def set_date_config(self, config):
+        """Establece configuración de fechas específica"""
+        try:
+            self.date_config_form.set_date_config(config)
+            self._save_current_date_config()
+            self._log_date_config_status()
+            return True
+        except Exception as e:
+            self.logger.error(f"Error estableciendo configuración de fechas: {e}")
+            return False
+
+    def apply_date_preset(self, preset_name):
+        """Aplica un preset de fechas predefinido"""
+        try:
+            success, message = self.date_config_manager.apply_preset(preset_name)
+            if success:
+                # Recargar configuración en el formulario
+                self._load_saved_date_config()
+                self.logger.info(f"📅 {message}")
+                return True
+            else:
+                self.logger.error(f"❌ Error aplicando preset: {message}")
+                return False
+        except Exception as e:
+            self.logger.error(f"❌ Excepción aplicando preset: {e}")
+            return False
+
     def cleanup(self):
         """Limpia recursos al cerrar la pestaña"""
         self._is_closing = True
         self.logger.info("Cerrando sistema...")
+
+        # Guardar configuración actual antes de cerrar
+        try:
+            self._save_current_date_config()
+        except Exception as e:
+            self.logger.warning(f"Error guardando configuración al cerrar: {e}")
 
         # Si hay una ejecución en curso, marcarla como interrumpida
         if self.registry_tab and self.current_execution_record:

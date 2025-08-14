@@ -3,11 +3,13 @@
 """
 Componentes UI reutilizables para el sistema de automatización.
 Proporciona widgets especializados, secciones colapsables, formularios
-de credenciales y elementos estilizados para la interfaz de automatización.
+de credenciales, configuración de fechas y elementos estilizados para la interfaz de automatización.
 """
 
 import tkinter as tk
 from tkinter import ttk, scrolledtext
+import re
+from datetime import datetime
 
 
 class AutomationTheme:
@@ -320,6 +322,370 @@ class CredentialsForm:
             self.widgets[button_name].configure(command=command)
 
 
+class DateConfigForm:
+    """Formulario de configuración de fechas para automatización"""
+
+    def __init__(self, parent, theme=None):
+        self.parent = parent
+        self.theme = theme or AutomationTheme()
+        self.widgets = {}
+        self.date_pattern = re.compile(r'^(\d{2})/(\d{2})/(\d{4})$')
+
+    def create(self):
+        """Crea el formulario completo de configuración de fechas"""
+        content = tk.Frame(self.parent, bg=self.theme.colors['bg_primary'])
+        content.pack(fill='x', padx=18, pady=15)
+
+        # Checkbox para omitir configuración de fecha
+        self._create_skip_checkbox(content)
+
+        # Campos de fecha
+        self._create_date_fields(content)
+
+        # Botones de acción
+        self._create_action_buttons(content)
+
+        # Estado inicial
+        self._update_fields_state()
+
+        return self.widgets
+
+    def _create_skip_checkbox(self, parent):
+        """Crea checkbox para omitir configuración de fecha"""
+        checkbox_frame = tk.Frame(parent, bg=self.theme.colors['bg_tertiary'])
+        checkbox_frame.pack(fill='x', pady=(0, 15))
+
+        self.widgets['skip_date_var'] = tk.BooleanVar(value=True)  # Marcado por defecto
+        skip_checkbox = tk.Checkbutton(
+            checkbox_frame,
+            text="📅 No tocar fechas (mantener comportamiento actual)",
+            variable=self.widgets['skip_date_var'],
+            command=self._on_skip_change,
+            bg=self.theme.colors['bg_tertiary'],
+            fg=self.theme.colors['text_primary'],
+            font=('Arial', 10, 'bold'),
+            padx=15, pady=10
+        )
+        skip_checkbox.pack(anchor='w')
+
+    def _create_date_fields(self, parent):
+        """Crea los campos de fecha Desde y Hasta"""
+        dates_frame = tk.Frame(parent, bg=self.theme.colors['bg_primary'])
+        dates_frame.pack(fill='x', pady=(0, 15))
+
+        # Instrucciones
+        instructions_label = tk.Label(
+            dates_frame,
+            text="📋 Formato: DD/MM/YYYY (ejemplo: 10/08/2025)",
+            bg=self.theme.colors['bg_primary'],
+            fg=self.theme.colors['text_secondary'],
+            font=('Arial', 9)
+        )
+        instructions_label.pack(anchor='w', pady=(0, 10))
+
+        # Frame para los campos
+        fields_frame = tk.Frame(dates_frame, bg=self.theme.colors['bg_tertiary'])
+        fields_frame.pack(fill='x')
+
+        fields_inner = tk.Frame(fields_frame, bg=self.theme.colors['bg_tertiary'])
+        fields_inner.pack(padx=15, pady=15)
+
+        # Campo Desde
+        tk.Label(
+            fields_inner,
+            text="📅 Fecha Desde:",
+            bg=self.theme.colors['bg_tertiary'],
+            fg=self.theme.colors['text_primary'],
+            font=('Arial', 10, 'bold')
+        ).grid(row=0, column=0, sticky='w', pady=(0, 8))
+
+        self.widgets['date_from_entry'] = self._create_styled_entry(fields_inner)
+        self.widgets['date_from_entry'].grid(row=0, column=1, sticky='ew', padx=(10, 0), pady=(0, 8))
+
+        # Placeholder en el campo Desde
+        self.widgets['date_from_entry'].insert(0, "DD/MM/YYYY")
+        self.widgets['date_from_entry'].bind('<FocusIn>', lambda e: self._on_entry_focus_in(e, 'date_from_entry'))
+        self.widgets['date_from_entry'].bind('<FocusOut>', lambda e: self._on_entry_focus_out(e, 'date_from_entry'))
+        self.widgets['date_from_entry'].bind('<KeyRelease>', lambda e: self._validate_date_format(e, 'date_from_entry'))
+
+        # Campo Hasta
+        tk.Label(
+            fields_inner,
+            text="📅 Fecha Hasta:",
+            bg=self.theme.colors['bg_tertiary'],
+            fg=self.theme.colors['text_primary'],
+            font=('Arial', 10, 'bold')
+        ).grid(row=1, column=0, sticky='w')
+
+        self.widgets['date_to_entry'] = self._create_styled_entry(fields_inner)
+        self.widgets['date_to_entry'].grid(row=1, column=1, sticky='ew', padx=(10, 0))
+
+        # Placeholder en el campo Hasta
+        self.widgets['date_to_entry'].insert(0, "DD/MM/YYYY")
+        self.widgets['date_to_entry'].bind('<FocusIn>', lambda e: self._on_entry_focus_in(e, 'date_to_entry'))
+        self.widgets['date_to_entry'].bind('<FocusOut>', lambda e: self._on_entry_focus_out(e, 'date_to_entry'))
+        self.widgets['date_to_entry'].bind('<KeyRelease>', lambda e: self._validate_date_format(e, 'date_to_entry'))
+
+        fields_inner.grid_columnconfigure(1, weight=1)
+
+        # Labels de validación
+        self.widgets['date_from_validation'] = tk.Label(
+            fields_inner,
+            text="",
+            bg=self.theme.colors['bg_tertiary'],
+            font=('Arial', 8)
+        )
+        self.widgets['date_from_validation'].grid(row=0, column=2, padx=(5, 0), pady=(0, 8))
+
+        self.widgets['date_to_validation'] = tk.Label(
+            fields_inner,
+            text="",
+            bg=self.theme.colors['bg_tertiary'],
+            font=('Arial', 8)
+        )
+        self.widgets['date_to_validation'].grid(row=1, column=2, padx=(5, 0))
+
+    def _create_action_buttons(self, parent):
+        """Crea botones de acción"""
+        buttons_frame = tk.Frame(parent, bg=self.theme.colors['bg_primary'])
+        buttons_frame.pack(fill='x')
+
+        buttons_frame.grid_columnconfigure(0, weight=1)
+        buttons_frame.grid_columnconfigure(1, weight=1)
+
+        # Botón establecer fecha actual
+        self.widgets['set_today_button'] = self._create_styled_button(
+            buttons_frame, "📅 Establecer Hoy", None, self.theme.colors['info']
+        )
+        self.widgets['set_today_button'].grid(row=0, column=0, sticky='ew', padx=(0, 5))
+
+        # Botón limpiar fechas
+        self.widgets['clear_dates_button'] = self._create_styled_button(
+            buttons_frame, "🗑️ Limpiar Fechas", None, self.theme.colors['warning']
+        )
+        self.widgets['clear_dates_button'].grid(row=0, column=1, sticky='ew', padx=(5, 0))
+
+    def _create_styled_entry(self, parent, **kwargs):
+        """Crea un Entry con estilo consistente"""
+        entry = tk.Entry(
+            parent,
+            bg=self.theme.colors['bg_tertiary'],
+            fg=self.theme.colors['text_primary'],
+            font=('Arial', 10),
+            relief='flat',
+            bd=8,
+            **kwargs
+        )
+        return entry
+
+    def _create_styled_button(self, parent, text, command, color):
+        """Crea un botón con estilo consistente"""
+        btn = tk.Button(
+            parent,
+            text=text,
+            command=command,
+            bg=color,
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            relief='flat',
+            padx=20,
+            pady=12,
+            cursor='hand2'
+        )
+        return btn
+
+    def _on_skip_change(self):
+        """Maneja cambio en checkbox de omitir fecha"""
+        self._update_fields_state()
+
+    def _update_fields_state(self):
+        """Actualiza estado de los campos según checkbox"""
+        skip_enabled = self.widgets['skip_date_var'].get()
+        state = 'disabled' if skip_enabled else 'normal'
+
+        # Deshabilitar/habilitar campos
+        for widget_name in ['date_from_entry', 'date_to_entry', 'set_today_button', 'clear_dates_button']:
+            if widget_name in self.widgets:
+                self.widgets[widget_name].configure(state=state)
+
+    def _on_entry_focus_in(self, event, entry_name):
+        """Maneja focus in en campos de fecha"""
+        entry = self.widgets[entry_name]
+        if entry.get() == "DD/MM/YYYY":
+            entry.delete(0, 'end')
+            entry.configure(fg=self.theme.colors['text_primary'])
+
+    def _on_entry_focus_out(self, event, entry_name):
+        """Maneja focus out en campos de fecha"""
+        entry = self.widgets[entry_name]
+        if not entry.get().strip():
+            entry.insert(0, "DD/MM/YYYY")
+            entry.configure(fg=self.theme.colors['text_secondary'])
+
+    def _validate_date_format(self, event, entry_name):
+        """Valida formato de fecha en tiempo real"""
+        entry = self.widgets[entry_name]
+        validation_label = self.widgets[f"{entry_name.replace('_entry', '_validation')}"]
+
+        date_text = entry.get().strip()
+
+        # Ignorar placeholder
+        if date_text == "DD/MM/YYYY" or not date_text:
+            validation_label.configure(text="", fg=self.theme.colors['text_secondary'])
+            return
+
+        # Validar formato
+        if self._is_valid_date_format(date_text):
+            validation_label.configure(text="✅", fg=self.theme.colors['success'])
+        else:
+            validation_label.configure(text="❌", fg=self.theme.colors['error'])
+
+    def _is_valid_date_format(self, date_text):
+        """Verifica si el formato de fecha es válido"""
+        if not self.date_pattern.match(date_text):
+            return False
+
+        try:
+            day, month, year = map(int, date_text.split('/'))
+            # Verificar rangos básicos
+            if not (1 <= day <= 31 and 1 <= month <= 12 and 1900 <= year <= 2100):
+                return False
+
+            # Intentar crear fecha para validación completa
+            datetime(year, month, day)
+            return True
+        except ValueError:
+            return False
+
+    def get_date_config(self):
+        """Obtiene configuración actual de fechas"""
+        skip_dates = self.widgets['skip_date_var'].get()
+
+        if skip_dates:
+            return {
+                'skip_dates': True,
+                'date_from': None,
+                'date_to': None
+            }
+
+        date_from = self.widgets['date_from_entry'].get().strip()
+        date_to = self.widgets['date_to_entry'].get().strip()
+
+        # Limpiar placeholders
+        if date_from == "DD/MM/YYYY":
+            date_from = ""
+        if date_to == "DD/MM/YYYY":
+            date_to = ""
+
+        return {
+            'skip_dates': False,
+            'date_from': date_from if date_from else None,
+            'date_to': date_to if date_to else None
+        }
+
+    def set_date_config(self, config):
+        """Establece configuración de fechas"""
+        skip_dates = config.get('skip_dates', True)
+        self.widgets['skip_date_var'].set(skip_dates)
+
+        if not skip_dates:
+            date_from = config.get('date_from', '')
+            date_to = config.get('date_to', '')
+
+            # Limpiar y establecer fecha desde
+            self.widgets['date_from_entry'].delete(0, 'end')
+            if date_from:
+                self.widgets['date_from_entry'].insert(0, date_from)
+                self.widgets['date_from_entry'].configure(fg=self.theme.colors['text_primary'])
+            else:
+                self.widgets['date_from_entry'].insert(0, "DD/MM/YYYY")
+                self.widgets['date_from_entry'].configure(fg=self.theme.colors['text_secondary'])
+
+            # Limpiar y establecer fecha hasta
+            self.widgets['date_to_entry'].delete(0, 'end')
+            if date_to:
+                self.widgets['date_to_entry'].insert(0, date_to)
+                self.widgets['date_to_entry'].configure(fg=self.theme.colors['text_primary'])
+            else:
+                self.widgets['date_to_entry'].insert(0, "DD/MM/YYYY")
+                self.widgets['date_to_entry'].configure(fg=self.theme.colors['text_secondary'])
+
+        self._update_fields_state()
+
+    def clear_dates(self):
+        """Limpia los campos de fecha"""
+        for entry_name in ['date_from_entry', 'date_to_entry']:
+            entry = self.widgets[entry_name]
+            entry.delete(0, 'end')
+            entry.insert(0, "DD/MM/YYYY")
+            entry.configure(fg=self.theme.colors['text_secondary'])
+
+            # Limpiar validación
+            validation_name = entry_name.replace('_entry', '_validation')
+            if validation_name in self.widgets:
+                self.widgets[validation_name].configure(text="")
+
+    def set_today_dates(self):
+        """Establece fechas actuales en ambos campos"""
+        today = datetime.now().strftime("%d/%m/%Y")
+
+        for entry_name in ['date_from_entry', 'date_to_entry']:
+            entry = self.widgets[entry_name]
+            entry.delete(0, 'end')
+            entry.insert(0, today)
+            entry.configure(fg=self.theme.colors['text_primary'])
+
+            # Actualizar validación
+            validation_name = entry_name.replace('_entry', '_validation')
+            if validation_name in self.widgets:
+                self.widgets[validation_name].configure(text="✅", fg=self.theme.colors['success'])
+
+    def validate_date_range(self):
+        """Valida que el rango de fechas sea correcto"""
+        config = self.get_date_config()
+
+        if config['skip_dates']:
+            return True, "Fechas omitidas"
+
+        date_from = config['date_from']
+        date_to = config['date_to']
+
+        # Si ambas están vacías, está bien
+        if not date_from and not date_to:
+            return True, "Sin fechas especificadas"
+
+        # Si solo una está llena, también está bien
+        if not date_from or not date_to:
+            return True, "Una fecha especificada"
+
+        # Validar formato
+        if not self._is_valid_date_format(date_from):
+            return False, f"Formato de fecha 'Desde' inválido: {date_from}"
+
+        if not self._is_valid_date_format(date_to):
+            return False, f"Formato de fecha 'Hasta' inválido: {date_to}"
+
+        # Validar rango
+        try:
+            from_parts = date_from.split('/')
+            to_parts = date_to.split('/')
+
+            from_date = datetime(int(from_parts[2]), int(from_parts[1]), int(from_parts[0]))
+            to_date = datetime(int(to_parts[2]), int(to_parts[1]), int(to_parts[0]))
+
+            if from_date > to_date:
+                return False, "La fecha 'Desde' no puede ser posterior a 'Hasta'"
+
+            return True, "Rango de fechas válido"
+        except Exception as e:
+            return False, f"Error validando rango: {str(e)}"
+
+    def set_button_command(self, button_name, command):
+        """Establece comando para un botón específico"""
+        if button_name in self.widgets:
+            self.widgets[button_name].configure(command=command)
+
+
 class StatusPanel:
     """Panel de estado del sistema de automatización"""
 
@@ -536,6 +902,11 @@ class AutomationUIFactory:
     def create_credentials_form(parent, theme=None):
         """Crea un formulario de credenciales"""
         return CredentialsForm(parent, theme)
+
+    @staticmethod
+    def create_date_config_form(parent, theme=None):
+        """Crea un formulario de configuración de fechas"""
+        return DateConfigForm(parent, theme)
 
     @staticmethod
     def create_status_panel(parent, theme=None):
