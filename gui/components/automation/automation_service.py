@@ -1,9 +1,9 @@
 # automation_service.py
 # Ubicación: /syncro_bot/gui/components/automation/automation_service.py
 """
-Servicio de automatización con login automático y selección de dropdown usando Selenium.
+Servicio de automatización con login automático, selección de dropdown y clic en botón de pestaña.
 Maneja la configuración del navegador, proceso de login automático, selección automática
-del dropdown "140_AUTO INSTALACION", verificación de credenciales y control del driver de Chrome.
+del dropdown "140_AUTO INSTALACION", clic en botón de pestaña y verificación de credenciales.
 """
 
 import threading
@@ -29,7 +29,7 @@ from .credentials_manager import CredentialsManager
 
 
 class AutomationService:
-    """Servicio de automatización con login automático y selección de dropdown usando Selenium"""
+    """Servicio de automatización con login automático, selección de dropdown y clic en botón"""
 
     def __init__(self, logger=None):
         self.is_running = False
@@ -59,11 +59,15 @@ class AutomationService:
             ]
         }
 
+        # XPath para el botón de pestaña
+        self.tab_button_xpath = '//*[@id="tab-1030-btnEl"]'
+
         # Configuración de timeouts
         self.page_load_timeout = 30
         self.element_wait_timeout = 25
         self.implicit_wait_timeout = 10
         self.dropdown_wait_timeout = 15
+        self.button_wait_timeout = 15
 
     def _log(self, message, level="INFO"):
         """Log interno con fallback"""
@@ -216,7 +220,15 @@ class AutomationService:
                 self._log(f"Advertencia en dropdown: {dropdown_message}", "WARNING")
                 return True, f"Login exitoso. {dropdown_message}"
 
-            return True, f"Login y selección de dropdown completados exitosamente. {dropdown_message}"
+            # Si el dropdown fue exitoso, proceder con el clic en el botón de pestaña
+            self._log("Dropdown configurado, procediendo con clic en botón de pestaña...")
+            button_success, button_message = self._handle_tab_button_click(driver)
+
+            if not button_success:
+                self._log(f"Advertencia en botón de pestaña: {button_message}", "WARNING")
+                return True, f"Login y dropdown completados. {button_message}"
+
+            return True, f"Automatización completa: Login, dropdown y botón de pestaña ejecutados exitosamente. {button_message}"
 
         except TimeoutException:
             current_url = driver.current_url if driver else "N/A"
@@ -341,6 +353,85 @@ class AutomationService:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
+    def _handle_tab_button_click(self, driver):
+        """Maneja el clic en el botón de pestaña después de la selección del dropdown"""
+        try:
+            self._log("🔘 Iniciando clic en botón de pestaña...")
+            wait = WebDriverWait(driver, self.button_wait_timeout)
+
+            # Paso 1: Buscar el botón de pestaña
+            self._log(f"Buscando botón de pestaña: {self.tab_button_xpath}")
+            tab_button = None
+
+            try:
+                tab_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, self.tab_button_xpath))
+                )
+                self._log("✅ Botón de pestaña encontrado")
+            except TimeoutException:
+                self._log("❌ No se encontró el botón de pestaña", "WARNING")
+                return False, "Botón de pestaña no encontrado en la página"
+
+            # Paso 2: Verificar que el botón esté visible y clickeable
+            try:
+                # Hacer scroll al botón si es necesario
+                self._log("Haciendo scroll al botón de pestaña...")
+                driver.execute_script("arguments[0].scrollIntoView(true);", tab_button)
+                time.sleep(1)
+
+                # Verificar si el botón está habilitado
+                if not tab_button.is_enabled():
+                    self._log("⚠️ El botón de pestaña está deshabilitado", "WARNING")
+                    return False, "El botón de pestaña está deshabilitado"
+
+                # Verificar si el botón está visible
+                if not tab_button.is_displayed():
+                    self._log("⚠️ El botón de pestaña no está visible", "WARNING")
+                    return False, "El botón de pestaña no está visible"
+
+                self._log("✅ Botón de pestaña está listo para hacer clic")
+
+            except Exception as e:
+                self._log(f"Error verificando estado del botón: {e}", "WARNING")
+                # Continuar de todas formas intentando hacer clic
+
+            # Paso 3: Hacer clic en el botón de pestaña
+            try:
+                self._log("Haciendo clic en botón de pestaña...")
+                tab_button.click()
+                self._log("🎯 Clic en botón de pestaña ejecutado")
+
+                # Esperar un poco para que se procese la acción
+                time.sleep(2)
+
+                # Paso 4: Verificar que el clic fue exitoso (opcional)
+                try:
+                    # Verificar si hay algún cambio en la página después del clic
+                    # Esto depende de lo que hace el botón, pero generalmente podríamos
+                    # verificar cambios en la URL, nuevos elementos, etc.
+                    current_url = driver.current_url
+                    self._log(f"📍 URL después del clic: {current_url}")
+
+                    # Verificar si el botón cambió de estado o si aparecieron nuevos elementos
+                    # (esta verificación específica dependería del comportamiento esperado)
+
+                    return True, "Botón de pestaña clickeado exitosamente"
+
+                except Exception as e:
+                    self._log(f"Error verificando resultado del clic: {e}", "DEBUG")
+                    # Asumir que el clic fue exitoso si no hay errores graves
+                    return True, "Botón de pestaña clickeado (verificación parcial)"
+
+            except Exception as e:
+                error_msg = f"Error haciendo clic en el botón: {str(e)}"
+                self._log(error_msg, "ERROR")
+                return False, error_msg
+
+        except Exception as e:
+            error_msg = f"Error manejando botón de pestaña: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
     def _verify_login_success(self, driver, wait):
         """Verifica si el login fue exitoso con múltiples métodos"""
         try:
@@ -433,7 +524,7 @@ class AutomationService:
             return False, error_msg
 
     def start_automation(self, username=None, password=None):
-        """Inicia el proceso de automatización con login automático y selección de dropdown"""
+        """Inicia el proceso de automatización completo con login, dropdown y clic en botón"""
         try:
             with self._lock:
                 if self.is_running:
@@ -470,7 +561,7 @@ class AutomationService:
                     return False, setup_message
 
                 self.driver = driver
-                self._log("Navegador configurado, iniciando login y configuración...")
+                self._log("Navegador configurado, iniciando login y configuración completa...")
 
                 # Realizar login y configuración completa
                 login_success, login_message = self._perform_login(driver, username, password)
@@ -529,7 +620,7 @@ class AutomationService:
             self._log("Todas las operaciones de automatización detenidas")
 
     def test_credentials(self, username, password):
-        """Prueba las credenciales sin iniciar la automatización completa"""
+        """Prueba las credenciales ejecutando el proceso completo de automatización"""
         try:
             if not SELENIUM_AVAILABLE:
                 return False, "Selenium no está disponible para probar credenciales"
@@ -539,7 +630,7 @@ class AutomationService:
             if not valid:
                 return False, message
 
-            self._log("Iniciando prueba de credenciales...")
+            self._log("Iniciando prueba completa de automatización...")
 
             # Configurar driver temporal
             driver, success, setup_message = self._setup_chrome_driver()
@@ -547,16 +638,16 @@ class AutomationService:
                 return False, setup_message
 
             try:
-                self._log("Driver configurado, probando login completo...")
-                # Realizar prueba de login completo (incluyendo dropdown)
-                login_success, login_message = self._perform_login(driver, username, password)
+                self._log("Driver configurado, ejecutando prueba completa...")
+                # Realizar prueba completa (login, dropdown y botón)
+                automation_success, automation_message = self._perform_login(driver, username, password)
 
-                if login_success:
-                    self._log("Prueba completa de credenciales y configuración exitosa")
+                if automation_success:
+                    self._log("Prueba completa de automatización exitosa")
                 else:
-                    self._log(f"Prueba falló: {login_message}", "ERROR")
+                    self._log(f"Prueba falló: {automation_message}", "ERROR")
 
-                return login_success, login_message
+                return automation_success, automation_message
             finally:
                 # Limpiar driver temporal
                 try:
@@ -566,7 +657,7 @@ class AutomationService:
                     pass
 
         except Exception as e:
-            error_msg = f"Error probando credenciales: {str(e)}"
+            error_msg = f"Error probando automatización completa: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg
 
@@ -627,6 +718,19 @@ class AutomationService:
         except Exception as e:
             self._log(f"Error obteniendo valor del dropdown: {e}", "WARNING")
             return None
+
+    def click_tab_button_manually(self):
+        """Ejecuta solo el clic en el botón de pestaña (para uso manual)"""
+        if not self.driver or not self.is_running:
+            return False, "No hay automatización activa"
+
+        try:
+            button_success, button_message = self._handle_tab_button_click(self.driver)
+            return button_success, button_message
+        except Exception as e:
+            error_msg = f"Error haciendo clic manual en botón: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
 
     def change_dropdown_value(self, target_value):
         """Cambia el valor del dropdown a un valor específico (funcionalidad futura)"""
