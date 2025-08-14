@@ -1,9 +1,9 @@
 # schedule_tab.py
 # Ubicación: /syncro_bot/gui/tabs/schedule_tab.py
 """
-Pestaña de programación de ejecución automática para Syncro Bot.
-Coordina componentes de datos, UI y servicios para la gestión
-de programaciones que ejecutan el bot automáticamente en horarios específicos.
+Pestaña de programación de ejecución automática del bot CORREGIDA.
+Coordina componentes de datos, UI y servicios para la gestión de programaciones
+que ejecutan el bot automáticamente en horarios específicos con validaciones robustas.
 """
 
 import tkinter as tk
@@ -12,10 +12,11 @@ from ..components.schedule_data_manager import ScheduleManager, ScheduleValidato
 from ..components.schedule_execution_service import ScheduleExecutionService, BotScheduler
 from ..components.schedule_ui_components import ScheduleUICoordinator
 from ..components.registry_ui_components import UITheme, CardFrame
+from datetime import datetime
 
 
 class ScheduleTab:
-    """Coordinador principal de la pestaña de programación de ejecución automática"""
+    """Coordinador principal de la pestaña de programación de ejecución automática (CORREGIDO)"""
 
     def __init__(self, parent_notebook):
         # Configuración básica
@@ -26,16 +27,15 @@ class ScheduleTab:
         self.schedule_manager = ScheduleManager()
         self.validator = ScheduleValidator()
         self.execution_service = ScheduleExecutionService()
-        self.bot_scheduler = None
         self.ui_coordinator = None
+        self.bot_scheduler = None
 
         # Estado
         self.selected_schedule = None
-        self.registry_tab = None
         self.automation_tab = None
+        self.registry_tab = None
         self.current_execution_record = None
         self.integrations_ready = False
-        self.pending_status_update = False
 
         # Inicializar
         self._initialize_components()
@@ -47,9 +47,9 @@ class ScheduleTab:
         self._load_initial_data()
 
     def create_tab(self):
-        """Crear la pestaña de programación"""
+        """Crear la pestaña de programación de ejecución"""
         self.frame = ttk.Frame(self.parent)
-        self.parent.add(self.frame, text="Programar Ejecución")
+        self.parent.add(self.frame, text="Programar Automatización")
         self._create_interface()
 
     def _create_interface(self):
@@ -92,30 +92,30 @@ class ScheduleTab:
         self.ui_coordinator.initialize_components(left_column, right_column)
         self.ui_coordinator.set_callback('schedule_selected', self._on_schedule_selected)
 
-        # Crear secciones
+        # Crear secciones de formulario
         self._create_form_sections(left_column)
         self._create_list_sections(right_column)
 
     def _create_form_sections(self, parent):
-        """Crea las secciones del formulario"""
+        """Crea las secciones del formulario con espaciado corregido"""
         # Configurar filas
         parent.grid_rowconfigure(0, weight=0)
         parent.grid_rowconfigure(1, weight=0)
         parent.grid_rowconfigure(2, weight=0)
-        parent.grid_rowconfigure(3, weight=1)
+        parent.grid_rowconfigure(3, weight=1)  # Espaciador al final
         parent.grid_columnconfigure(0, weight=1)
 
-        # Sección 1: Configuración Básica
+        # Sección 1: Configuración Básica (fila 0)
         self._create_custom_section(parent, "basic_config", "⚙️ Configuración Básica",
                                     lambda c: self.ui_coordinator.form_handler.create_basic_config_form(c),
                                     row=0, expanded=True, height=160, pady_bottom=10)
 
-        # Sección 2: Programación de Horarios
+        # Sección 2: Programación de Horarios (fila 1)
         self._create_custom_section(parent, "schedule", "⏰ Programación de Horarios",
                                     lambda c: self.ui_coordinator.form_handler.create_schedule_form(c),
                                     row=1, expanded=False, height=240, pady_bottom=10)
 
-        # Sección 3: Acciones
+        # Sección 3: Acciones (fila 2)
         self._create_custom_section(parent, "actions", "🎮 Acciones",
                                     self._create_actions_content,
                                     row=2, expanded=False, height=200, pady_bottom=0)
@@ -124,7 +124,7 @@ class ScheduleTab:
                                row, expanded, height, pady_bottom):
         """Crea una sección colapsable con control personalizado de espaciado"""
         section_container = tk.Frame(parent, bg=self.theme.colors['bg_primary'])
-        section_container.configure(height=55)
+        section_container.configure(height=55)  # Altura cuando está colapsada
         section_container.grid(row=row, column=0, sticky='ew', pady=(0, pady_bottom))
         section_container.grid_columnconfigure(0, weight=1)
         section_container.grid_propagate(False)
@@ -283,12 +283,13 @@ class ScheduleTab:
         )
 
     def _setup_services(self):
-        """Configura los servicios"""
+        """CORREGIDO: Configura los servicios con todas las referencias necesarias"""
         self.execution_service.add_execution_callback(self._on_execution_event)
 
     def _load_initial_data(self):
         """Carga datos iniciales"""
         try:
+            # Cargar programaciones y estadísticas
             schedules = self.schedule_manager.get_schedules()
             stats = self.schedule_manager.get_statistics()
 
@@ -300,24 +301,6 @@ class ScheduleTab:
             if self.ui_coordinator:
                 self.ui_coordinator.update_schedule_list([])
                 self.ui_coordinator.update_statistics({'total': 0, 'active': 0})
-
-    def _deferred_status_update(self):
-        """Actualiza el estado del sistema de forma diferida"""
-        if not self.integrations_ready:
-            return
-
-        try:
-            # Actualizar estado de automatización
-            self.ui_coordinator.update_automation_status(self.automation_tab)
-
-            # Actualizar estado del scheduler
-            scheduler_running = self.bot_scheduler and self.bot_scheduler.is_running
-            self.ui_coordinator.update_scheduler_status(scheduler_running)
-
-            self.pending_status_update = False
-            print("✅ Estado del sistema de programación actualizado")
-        except Exception as e:
-            print(f"Error en actualización diferida: {e}")
 
     def _on_schedule_selected(self, schedule_name):
         """Maneja selección de programación"""
@@ -389,7 +372,7 @@ class ScheduleTab:
 
         if not messagebox.askyesno("Confirmar",
                                    f"¿Está seguro de eliminar la programación '{selected_name}'?\n\n" +
-                                   "Se detendrá la ejecución automática programada."):
+                                   "Se detendrán las ejecuciones automáticas programadas."):
             return
 
         try:
@@ -408,27 +391,34 @@ class ScheduleTab:
             messagebox.showerror("Error", f"Error al eliminar programación:\n{str(e)}")
 
     def _test_execute_bot(self):
-        """Prueba la ejecución del bot para una programación seleccionada"""
+        """CORREGIDO: Prueba la ejecución del bot para una programación seleccionada"""
         if not self.selected_schedule:
-            messagebox.showwarning("Sin Selección", "Debe seleccionar una programación para probar")
+            messagebox.showwarning("Sin Selección", "Debe seleccionar una programación para probar la ejecución")
             return
 
-        # Verificar que el sistema esté listo
+        # NUEVO: Verificar que el sistema esté listo para ejecutar
+        if not self.integrations_ready:
+            messagebox.showerror("Sistema No Listo", "Sistema de automatización no está disponible.\n\n" +
+                                 "Asegúrese de que la pestaña de Automatización esté configurada.")
+            return
+
         ready, message = self.execution_service.validate_execution_environment()
         if not ready:
-            messagebox.showerror("Sistema No Listo", f"No se puede ejecutar:\n\n{message}")
+            messagebox.showerror("Sistema No Listo", f"No se puede ejecutar el bot:\n\n{message}\n\n" +
+                                 "Configure las credenciales en la pestaña 'Automatización' primero.")
             return
 
         if self.execution_service.is_busy():
-            messagebox.showwarning("Ocupado", "Ya hay una ejecución en curso")
+            messagebox.showwarning("Ocupado", "Ya hay una ejecución de bot en curso")
             return
 
         # Confirmar ejecución de prueba
         if not messagebox.askyesno("Confirmar Ejecución",
-                                   f"¿Ejecutar el bot de prueba para '{self.selected_schedule['name']}'?\n\n" +
-                                   "Se abrirá el bot de automatización en el navegador."):
+                                   f"¿Ejecutar prueba del bot para '{self.selected_schedule['name']}'?\n\n" +
+                                   "Se ejecutará la automatización del bot con las credenciales guardadas."):
             return
 
+        # CORREGIDO: Ejecutar usando el servicio mejorado
         self.execution_service.execute_schedule_async(
             schedule=self.selected_schedule,
             success_callback=self._on_test_success,
@@ -437,7 +427,7 @@ class ScheduleTab:
 
         messagebox.showinfo("Ejecutando Bot",
                             f"Se está ejecutando el bot de prueba para '{self.selected_schedule['name']}'.\n\n" +
-                            "El bot se abrirá en su navegador.")
+                            "Monitoree el progreso en la pestaña de Automatización.")
 
     def _clear_form(self):
         """Limpia el formulario"""
@@ -445,7 +435,7 @@ class ScheduleTab:
         self.selected_schedule = None
 
     def _on_execution_event(self, event_type, schedule, data):
-        """Maneja eventos de ejecución"""
+        """Maneja eventos de ejecución de bot"""
         handlers = {
             'start': lambda: self._handle_execution_start(schedule),
             'end': lambda: self._handle_execution_end(schedule, data)
@@ -455,27 +445,25 @@ class ScheduleTab:
             handler()
 
     def _handle_execution_start(self, schedule):
-        """Maneja inicio de ejecución"""
+        """Maneja inicio de ejecución de bot"""
         if self.registry_tab:
             try:
-                from datetime import datetime
                 self.current_execution_record = self.registry_tab.add_execution_record(
                     start_time=datetime.now(),
-                    profile_name=f"Programación: {schedule['name']}",
+                    profile_name=f"Programado: {schedule['name']}",
                     user_type="Sistema"
                 )
             except Exception as e:
-                print(f"Error creando registro de ejecución: {e}")
+                print(f"Error creando registro de ejecución programada: {e}")
 
     def _handle_execution_end(self, schedule, data):
-        """Maneja finalización de ejecución"""
+        """Maneja finalización de ejecución de bot"""
         success = data.get('success', False)
         message = data.get('message', '')
 
         # Actualizar registro
         if self.registry_tab and hasattr(self, 'current_execution_record'):
             try:
-                from datetime import datetime
                 self.registry_tab.update_execution_record(
                     record_id=self.current_execution_record['id'],
                     end_time=datetime.now(),
@@ -483,86 +471,88 @@ class ScheduleTab:
                     error_message="" if success else message
                 )
             except Exception as e:
-                print(f"Error actualizando registro: {e}")
+                print(f"Error actualizando registro programado: {e}")
 
     def _on_test_success(self, schedule, message):
-        """Callback para ejecución exitosa de prueba"""
+        """Callback para ejecución exitosa de bot de prueba"""
         self.frame.after(0, lambda: messagebox.showinfo(
             "Bot Ejecutado",
-            f"✅ Bot ejecutado exitosamente para '{schedule['name']}'.\n\n{message}"
+            f"✅ Bot de prueba para '{schedule['name']}' ejecutado exitosamente.\n\n{message}\n\n" +
+            "La automatización se completó correctamente."
         ))
 
     def _on_test_error(self, schedule, message):
-        """Callback para error en ejecución"""
+        """Callback para error en ejecución de bot"""
         self.frame.after(0, lambda: messagebox.showerror(
             "Error de Ejecución",
-            f"❌ Error ejecutando bot para '{schedule['name']}':\n\n{message}"
+            f"❌ Error ejecutando bot para '{schedule['name']}':\n\n{message}\n\n" +
+            "Verifique la configuración de credenciales en la pestaña Automatización."
         ))
 
     def refresh_data(self):
         """Refresca todos los datos mostrados"""
         try:
+            # Actualizar programaciones y estadísticas
             schedules = self.schedule_manager.get_schedules()
             stats = self.schedule_manager.get_statistics()
 
             self.ui_coordinator.update_schedule_list(schedules)
             self.ui_coordinator.update_statistics(stats)
 
-            # Actualizar estado del sistema si las integraciones están listas
+            # Actualizar estado del sistema de automatización
             if self.integrations_ready:
-                if not self.pending_status_update:
-                    self.pending_status_update = True
-                    self.frame.after(10, self._deferred_status_update)
+                self.ui_coordinator.update_automation_status(self.automation_tab)
+
+                # Actualizar estado del scheduler
+                if self.bot_scheduler:
+                    scheduler_status = self.bot_scheduler.get_scheduler_status()
+                    self.ui_coordinator.update_scheduler_status(scheduler_status.get('is_running', False))
 
         except Exception as e:
             messagebox.showerror("Error", f"Error refrescando datos:\n{str(e)}")
 
-    # ===== MÉTODOS DE INTEGRACIÓN =====
+    # ===== MÉTODOS DE INTEGRACIÓN CORREGIDOS =====
 
     def set_automation_tab(self, automation_tab):
-        """Establece la referencia al AutomationTab para ejecutar el bot"""
+        """CORREGIDO: Establece la referencia al AutomationTab para ejecución del bot"""
         self.automation_tab = automation_tab
         self.execution_service.set_automation_tab(automation_tab)
 
-        # Inicializar scheduler automático
-        self._initialize_bot_scheduler()
-
-        # Marcar integraciones como listas
-        self.integrations_ready = True
-
-        # Actualizar estado con delay
-        if not self.pending_status_update:
-            self.pending_status_update = True
-            self.frame.after(50, self._deferred_status_update)
+        print("✅ ScheduleTab → AutomationTab conectado correctamente")
 
     def set_registry_tab(self, registry_tab):
-        """Establece la referencia al RegistroTab para logging"""
+        """CORREGIDO: Establece la referencia al RegistroTab para logging"""
         self.registry_tab = registry_tab
+        self.execution_service.set_registry_tab(registry_tab)
+
+        # Marcar integraciones como listas solo cuando tengamos tanto automation como registry
+        if self.automation_tab and self.registry_tab:
+            self.integrations_ready = True
+
+            # Crear e iniciar el scheduler automático
+            self._initialize_bot_scheduler()
+
+            print("✅ ScheduleTab integraciones completas - Sistema listo")
 
     def _initialize_bot_scheduler(self):
-        """Inicializa el scheduler automático del bot"""
-        if not self.automation_tab:
-            print("❌ AutomationTab no disponible - scheduler no iniciado")
-            return
-
+        """NUEVO: Inicializa y arranca el scheduler automático del bot"""
         try:
-            # Crear instancia del scheduler
+            # Crear scheduler automático
             self.bot_scheduler = BotScheduler(
                 schedule_manager=self.schedule_manager,
                 execution_service=self.execution_service
             )
-            print("✅ BotScheduler creado exitosamente")
 
             # Iniciar scheduler automáticamente
             success, message = self.bot_scheduler.start_scheduler()
             if success:
-                print(f"🚀 BotScheduler iniciado: {message}")
+                print(f"🚀 Scheduler de ejecución automática iniciado: {message}")
             else:
-                print(f"❌ Error iniciando BotScheduler: {message}")
+                print(f"❌ Error iniciando scheduler de ejecución: {message}")
                 self.bot_scheduler = None
 
         except Exception as e:
-            print(f"❌ Error configurando BotScheduler: {e}")
+            print(f"❌ Error configurando scheduler de ejecución automática: {e}")
             self.bot_scheduler = None
 
     def get_active_schedules(self):
@@ -585,30 +575,44 @@ class ScheduleTab:
         return self.execution_service.get_current_execution()
 
     def get_scheduler_status(self):
-        """Obtiene estado del scheduler"""
+        """Obtiene estado del scheduler automático"""
         if not self.bot_scheduler:
-            return {'available': False, 'running': False}
-        return self.bot_scheduler.get_scheduler_status()
+            return {'running': False, 'available': False, 'error': 'Scheduler no inicializado'}
+
+        try:
+            status = self.bot_scheduler.get_scheduler_status()
+            status['available'] = True
+            return status
+        except Exception as e:
+            return {'running': False, 'available': False, 'error': str(e)}
 
     def cleanup(self):
-        """Limpia recursos al cerrar la pestaña"""
+        """CORREGIDO: Limpia recursos al cerrar la pestaña"""
         try:
-            # Detener scheduler
-            if self.bot_scheduler and self.bot_scheduler.is_running:
-                success, message = self.bot_scheduler.stop_scheduler()
-                print(f"BotScheduler detenido: {message}")
+            # Detener scheduler automático
+            if self.bot_scheduler:
+                print("🛑 Deteniendo scheduler de ejecución automática...")
+                try:
+                    success, message = self.bot_scheduler.stop_scheduler()
+                    if success:
+                        print(f"✅ Scheduler de ejecución detenido: {message}")
+                    else:
+                        print(f"⚠️ Error deteniendo scheduler: {message}")
+                except Exception as e:
+                    print(f"❌ Excepción deteniendo scheduler: {e}")
 
-            # Detener ejecución si está activa
+            # Detener cualquier ejecución en curso
             if self.execution_service and self.execution_service.is_busy():
+                print("🛑 Deteniendo ejecución en curso...")
                 self.execution_service.force_stop_execution()
 
             # Limpiar callbacks
             if self.execution_service:
                 self.execution_service._execution_callbacks.clear()
 
-            print("ScheduleTab cleanup completado")
+            print("✅ ScheduleTab (Programación) cleanup completado")
         except Exception as e:
-            print(f"Error durante cleanup de ScheduleTab: {e}")
+            print(f"❌ Error durante cleanup de ScheduleTab: {e}")
 
     def get_system_info(self):
         """Obtiene información del sistema de programación"""
@@ -616,24 +620,26 @@ class ScheduleTab:
             schedules = self.schedule_manager.get_schedules()
             active_schedules = self.schedule_manager.get_active_schedules()
 
-            automation_ready = bool(self.automation_tab)
-            scheduler_running = self.bot_scheduler and self.bot_scheduler.is_running
+            automation_ready = self.automation_tab is not None
+            if automation_ready and hasattr(self.automation_tab, 'credentials_manager'):
+                credentials = self.automation_tab.credentials_manager.load_credentials()
+                automation_ready = credentials is not None
 
             return {
                 'total_schedules': len(schedules),
                 'active_schedules': len(active_schedules),
-                'automation_available': automation_ready,
-                'scheduler_running': scheduler_running,
+                'automation_configured': automation_ready,
                 'execution_busy': self.execution_service.is_busy(),
-                'system_ready': automation_ready and scheduler_running
+                'scheduler_running': self.bot_scheduler.is_running if self.bot_scheduler else False,
+                'system_ready': automation_ready and len(active_schedules) > 0
             }
         except Exception as e:
-            print(f"Error obteniendo info del sistema: {e}")
+            print(f"Error obteniendo info del sistema de programación: {e}")
             return {
                 'total_schedules': 0,
                 'active_schedules': 0,
-                'automation_available': False,
-                'scheduler_running': False,
+                'automation_configured': False,
                 'execution_busy': False,
+                'scheduler_running': False,
                 'system_ready': False
             }

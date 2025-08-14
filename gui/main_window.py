@@ -74,7 +74,7 @@ class MainWindow:
         print("✅ Todas las pestañas creadas exitosamente")
 
     def setup_integrations(self):
-        """Configura las integraciones entre pestañas"""
+        """CORREGIDO: Configura las integraciones entre pestañas"""
         print("Configurando integraciones entre pestañas...")
 
         try:
@@ -85,27 +85,28 @@ class MainWindow:
             else:
                 print("  ❌ Error: AutomationTab o RegistroTab no disponibles")
 
-            # 2. Conectar ScheduleTab con AutomationTab y RegistroTab
+            # 2. CORREGIDO: Conectar ScheduleTab primero con AutomationTab
             if hasattr(self, 'schedule_tab') and hasattr(self, 'automation_tab'):
                 self.schedule_tab.set_automation_tab(self.automation_tab)
                 print("  ✅ ScheduleTab → AutomationTab conectado")
             else:
                 print("  ❌ Error: ScheduleTab o AutomationTab no disponibles")
 
+            # 3.Luego conectar ScheduleTab con RegistroTab (esto activará el scheduler)
             if hasattr(self, 'schedule_tab') and hasattr(self, 'registro_tab'):
                 self.schedule_tab.set_registry_tab(self.registro_tab)
-                print("  ✅ ScheduleTab → RegistroTab conectado")
+                print("  ✅ ScheduleTab → RegistroTab conectado (Sistema de programación activado)")
             else:
                 print("  ❌ Error: ScheduleTab o RegistroTab no disponibles")
 
-            # 3. Conectar ProfilesTab con RegistroTab (para logging de envíos de reportes)
+            # 4. Conectar ProfilesTab con RegistroTab (para logging de envíos de reportes)
             if hasattr(self, 'profiles_tab') and hasattr(self, 'registro_tab'):
                 self.profiles_tab.set_registry_tab(self.registro_tab)
                 print("  ✅ ProfilesTab → RegistroTab conectado")
             else:
                 print("  ❌ Error: ProfilesTab o RegistroTab no disponibles")
 
-            # 4. Conectar RegistroTab con EmailTab (para envío de reportes)
+            # 5. Conectar RegistroTab con EmailTab (para envío de reportes)
             if hasattr(self, 'registro_tab') and hasattr(self, 'email_tab'):
                 self.registro_tab.set_email_tab(self.email_tab)
                 print("  ✅ RegistroTab → EmailTab conectado")
