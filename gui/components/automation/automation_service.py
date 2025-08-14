@@ -1,10 +1,9 @@
 # automation_service.py
 # Ubicación: /syncro_bot/gui/components/automation/automation_service.py
 """
-Servicio de automatización con login automático, selección de dos dropdowns y clic en botón de pestaña.
+Servicio de automatización con login automático, selección de tres dropdowns y clic en dos botones.
 Maneja la configuración del navegador, proceso de login automático, selección automática
-del primer dropdown "140_AUTO INSTALACION", segundo dropdown "102_UDR_FS",
-clic en botón de pestaña y verificación de credenciales.
+de tres dropdowns (140_AUTO INSTALACION, 102_UDR_FS, PENDIENTE) y clic en botones de pestaña y acción.
 """
 
 import threading
@@ -30,7 +29,7 @@ from .credentials_manager import CredentialsManager
 
 
 class AutomationService:
-    """Servicio de automatización con login automático, selección de dropdowns y clic en botón"""
+    """Servicio de automatización con login automático, selección de tres dropdowns y clic en dos botones"""
 
     def __init__(self, logger=None):
         self.is_running = False
@@ -60,29 +59,45 @@ class AutomationService:
             ]
         }
 
-        # XPaths para segundo dropdown (102_UDR_FS) - CORREGIDOS
+        # XPaths para segundo dropdown (102_UDR_FS)
         self.second_dropdown_xpaths = {
             'trigger': '//*[@id="combo-1152-trigger-picker"]',
             'input': '//*[@id="combo-1152-inputEl"]',
             'options': [
-                '//li[text()="102_UDR_FS"]',  # Texto exacto - más preciso
-                '//li[@class="x-boundlist-item" and text()="102_UDR_FS"]',  # Con clase específica
-                '//ul[contains(@id, "listEl")]//li[text()="102_UDR_FS"]',  # Dentro del contenedor UL
-                '//li[@data-recordid="22395"]',  # Por data attribute específico del HTML
-                '//li[contains(text(), "102_UDR_FS")]'  # Fallback con contains
+                '//li[text()="102_UDR_FS"]',
+                '//li[@class="x-boundlist-item" and text()="102_UDR_FS"]',
+                '//ul[contains(@id, "listEl")]//li[text()="102_UDR_FS"]',
+                '//li[@data-recordid="22395"]',
+                '//li[contains(text(), "102_UDR_FS")]'
             ]
         }
 
-        # XPath para el botón de pestaña
+        # XPaths para tercer dropdown (PENDIENTE)
+        self.third_dropdown_xpaths = {
+            'trigger': '//*[@id="combo-1142-trigger-picker"]',
+            'input': '//*[@id="combo-1142-inputEl"]',
+            'options': [
+                '//li[text()="PENDIENTE"]',
+                '//li[@class="x-boundlist-item" and text()="PENDIENTE"]',
+                '//ul[contains(@id, "listEl")]//li[text()="PENDIENTE"]',
+                '//li[@data-recordid="24808"]',
+                '//li[contains(text(), "PENDIENTE")]'
+            ]
+        }
+
+        # XPaths para botones
         self.tab_button_xpath = '//*[@id="tab-1030-btnEl"]'
+        self.action_button_xpath = '//*[@id="button-1146-btnEl"]'
 
         # Configuración de timeouts
         self.page_load_timeout = 30
         self.element_wait_timeout = 25
         self.implicit_wait_timeout = 10
         self.dropdown_wait_timeout = 15
-        self.second_dropdown_wait_timeout = 20  # Aumentado para segundo dropdown
+        self.second_dropdown_wait_timeout = 20
+        self.third_dropdown_wait_timeout = 20
         self.button_wait_timeout = 15
+        self.action_button_wait_timeout = 15
 
     def _log(self, message, level="INFO"):
         """Log interno con fallback"""
@@ -156,7 +171,7 @@ class AutomationService:
             return None, False, f"Error inesperado con Selenium: {str(e)}"
 
     def _perform_login(self, driver, username, password):
-        """Realiza el proceso de login automático con esperas robustas"""
+        """Realiza el proceso de login automático con esperas robustas y configuración completa"""
         try:
             # Navegar a la página
             self._log(f"Navegando a: {self.target_url}")
@@ -251,7 +266,23 @@ class AutomationService:
                 self._log(f"Advertencia en segundo dropdown: {second_dropdown_message}", "WARNING")
                 return True, f"Login, primer dropdown y botón completados. {second_dropdown_message}"
 
-            return True, f"Automatización completa exitosa: Login, primer dropdown, botón de pestaña y segundo dropdown ejecutados. {second_dropdown_message}"
+            # Después del segundo dropdown, proceder con el tercer dropdown
+            self._log("Segundo dropdown configurado, procediendo con tercer dropdown...")
+            third_dropdown_success, third_dropdown_message = self._handle_third_dropdown_selection(driver)
+
+            if not third_dropdown_success:
+                self._log(f"Advertencia en tercer dropdown: {third_dropdown_message}", "WARNING")
+                return True, f"Login, dropdowns 1-2 y botón completados. {third_dropdown_message}"
+
+            # Después del tercer dropdown, proceder con el botón de acción final
+            self._log("Tercer dropdown configurado, procediendo con botón de acción final...")
+            action_button_success, action_button_message = self._handle_action_button_click(driver)
+
+            if not action_button_success:
+                self._log(f"Advertencia en botón de acción: {action_button_message}", "WARNING")
+                return True, f"Login, tres dropdowns y botón de pestaña completados. {action_button_message}"
+
+            return True, f"Automatización completa exitosa: Login, tres dropdowns y ambos botones ejecutados. {action_button_message}"
 
         except TimeoutException:
             current_url = driver.current_url if driver else "N/A"
@@ -377,7 +408,7 @@ class AutomationService:
             return False, error_msg
 
     def _handle_second_dropdown_selection(self, driver):
-        """Maneja la selección automática del segundo dropdown (102_UDR_FS) - CORREGIDO"""
+        """Maneja la selección automática del segundo dropdown (102_UDR_FS)"""
         try:
             self._log("🔽 Iniciando selección del segundo dropdown (102_UDR_FS)...")
             wait = WebDriverWait(driver, self.second_dropdown_wait_timeout)
@@ -415,7 +446,7 @@ class AutomationService:
             time.sleep(1)
             second_dropdown_trigger.click()
 
-            # Paso 4: ESPERAR EXPLÍCITAMENTE que aparezca la lista de opciones (CLAVE)
+            # Paso 4: ESPERAR EXPLÍCITAMENTE que aparezca la lista de opciones
             self._log("📋 Segundo dropdown abierto, esperando que aparezca la lista de opciones...")
 
             # Esperar a que aparezca el contenedor UL con las opciones
@@ -439,15 +470,15 @@ class AutomationService:
                 self._log("❌ Los elementos li no aparecieron", "WARNING")
                 return False, "Opciones individuales del segundo dropdown no se cargaron"
 
-            # Espera adicional para asegurar carga completa (como en el primer dropdown)
+            # Espera adicional para asegurar carga completa
             time.sleep(3)
             self._log("📋 Lista de opciones completamente cargada, buscando '102_UDR_FS'...")
 
-            # Paso 5: Buscar y seleccionar la opción "102_UDR_FS" con XPaths mejorados
+            # Paso 5: Buscar y seleccionar la opción "102_UDR_FS"
             option_found = False
             selected_option_text = ""
 
-            # Intentar con los XPaths corregidos
+            # Intentar con los XPaths definidos
             for i, option_xpath in enumerate(self.second_dropdown_xpaths['options']):
                 try:
                     self._log(f"Probando XPath {i + 1} en segundo dropdown: {option_xpath}")
@@ -495,7 +526,7 @@ class AutomationService:
                 return False, "No se encontró la opción '102_UDR_FS' en el segundo dropdown"
 
             # Paso 7: Esperar y verificar que se haya seleccionado correctamente
-            time.sleep(3)  # Espera más larga para asegurar actualización
+            time.sleep(3)
             try:
                 updated_input = driver.find_element(By.XPATH, self.second_dropdown_xpaths['input'])
                 final_value = updated_input.get_attribute('value')
@@ -515,8 +546,147 @@ class AutomationService:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
+    def _handle_third_dropdown_selection(self, driver):
+        """Maneja la selección automática del tercer dropdown (PENDIENTE)"""
+        try:
+            self._log("🔽 Iniciando selección del tercer dropdown (PENDIENTE)...")
+            wait = WebDriverWait(driver, self.third_dropdown_wait_timeout)
+
+            # Paso 1: Buscar el trigger del tercer dropdown
+            self._log("Buscando trigger del tercer dropdown...")
+            third_dropdown_trigger = None
+
+            try:
+                third_dropdown_trigger = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, self.third_dropdown_xpaths['trigger']))
+                )
+                self._log("✅ Trigger del tercer dropdown encontrado")
+            except TimeoutException:
+                self._log("❌ No se encontró el trigger del tercer dropdown", "WARNING")
+                return False, "Tercer dropdown no encontrado en la página"
+
+            # Paso 2: Verificar valor actual del input
+            try:
+                current_input = driver.find_element(By.XPATH, self.third_dropdown_xpaths['input'])
+                current_value = current_input.get_attribute('value')
+                self._log(f"📋 Valor actual del tercer dropdown: '{current_value}'")
+
+                # Si ya tiene el valor correcto, no necesitamos hacer nada
+                if "PENDIENTE" in current_value:
+                    self._log("✅ El tercer dropdown ya tiene el valor correcto")
+                    return True, "Tercer dropdown ya configurado con PENDIENTE"
+
+            except Exception as e:
+                self._log(f"No se pudo leer valor actual del tercer dropdown: {e}", "DEBUG")
+
+            # Paso 3: Hacer clic en el trigger para abrir el tercer dropdown
+            self._log("Haciendo clic en trigger del tercer dropdown...")
+            driver.execute_script("arguments[0].scrollIntoView(true);", third_dropdown_trigger)
+            time.sleep(1)
+            third_dropdown_trigger.click()
+
+            # Paso 4: ESPERAR EXPLÍCITAMENTE que aparezca la lista de opciones
+            self._log("📋 Tercer dropdown abierto, esperando que aparezca la lista de opciones...")
+
+            # Esperar a que aparezca el contenedor UL con las opciones
+            try:
+                WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((By.XPATH, "//ul[contains(@id, 'listEl')]"))
+                )
+                self._log("✅ Contenedor UL de opciones encontrado")
+            except TimeoutException:
+                self._log("❌ El contenedor de opciones no apareció", "WARNING")
+                return False, "Lista de opciones del tercer dropdown no se cargó"
+
+            # Esperar a que aparezcan elementos li dentro del contenedor
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//ul[contains(@id, 'listEl')]//li[@class='x-boundlist-item']"))
+                )
+                self._log("✅ Elementos li de opciones encontrados")
+            except TimeoutException:
+                self._log("❌ Los elementos li no aparecieron", "WARNING")
+                return False, "Opciones individuales del tercer dropdown no se cargaron"
+
+            # Espera adicional para asegurar carga completa
+            time.sleep(3)
+            self._log("📋 Lista de opciones completamente cargada, buscando 'PENDIENTE'...")
+
+            # Paso 5: Buscar y seleccionar la opción "PENDIENTE"
+            option_found = False
+            selected_option_text = ""
+
+            # Intentar con los XPaths definidos
+            for i, option_xpath in enumerate(self.third_dropdown_xpaths['options']):
+                try:
+                    self._log(f"Probando XPath {i + 1} en tercer dropdown: {option_xpath}")
+
+                    # Esperar a que la opción específica esté disponible
+                    option_element = WebDriverWait(driver, 8).until(
+                        EC.element_to_be_clickable((By.XPATH, option_xpath))
+                    )
+
+                    # Obtener texto de la opción para logging
+                    selected_option_text = option_element.text.strip()
+                    self._log(f"✅ Opción encontrada en tercer dropdown: '{selected_option_text}'")
+
+                    # Verificar que sea exactamente la opción que buscamos
+                    if "PENDIENTE" in selected_option_text:
+                        # Hacer clic en la opción
+                        driver.execute_script("arguments[0].scrollIntoView(true);", option_element)
+                        time.sleep(0.5)
+                        option_element.click()
+
+                        option_found = True
+                        self._log(f"🎯 Opción seleccionada en tercer dropdown: '{selected_option_text}'")
+                        break
+                    else:
+                        self._log(f"⚠️ Opción encontrada pero no es la correcta: '{selected_option_text}'", "DEBUG")
+                        continue
+
+                except TimeoutException:
+                    self._log(f"XPath {i + 1} no funcionó en tercer dropdown: {option_xpath}", "DEBUG")
+                    continue
+                except Exception as e:
+                    self._log(f"Error con XPath {i + 1} en tercer dropdown: {str(e)}", "DEBUG")
+                    continue
+
+            # Paso 6: Verificar si se seleccionó alguna opción
+            if not option_found:
+                # Intentar cerrar el dropdown si sigue abierto
+                try:
+                    third_dropdown_trigger.click()
+                    time.sleep(1)
+                except:
+                    pass
+
+                self._log("❌ No se pudo encontrar la opción PENDIENTE", "WARNING")
+                return False, "No se encontró la opción 'PENDIENTE' en el tercer dropdown"
+
+            # Paso 7: Esperar y verificar que se haya seleccionado correctamente
+            time.sleep(3)
+            try:
+                updated_input = driver.find_element(By.XPATH, self.third_dropdown_xpaths['input'])
+                final_value = updated_input.get_attribute('value')
+                self._log(f"✅ Valor final del tercer dropdown: '{final_value}'")
+
+                if "PENDIENTE" in final_value:
+                    return True, f"Tercer dropdown seleccionado exitosamente: '{final_value}'"
+                else:
+                    return False, f"Tercer dropdown no se actualizó correctamente. Valor: '{final_value}'"
+
+            except Exception as e:
+                self._log(f"Error verificando selección final del tercer dropdown: {e}", "WARNING")
+                return True, f"Opción seleccionada en tercer dropdown: '{selected_option_text}' (verificación parcial)"
+
+        except Exception as e:
+            error_msg = f"Error manejando tercer dropdown: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
     def _handle_tab_button_click(self, driver):
-        """Maneja el clic en el botón de pestaña después de la selección de ambos dropdowns"""
+        """Maneja el clic en el botón de pestaña después de la selección del primer dropdown"""
         try:
             self._log("🔘 Iniciando clic en botón de pestaña...")
             wait = WebDriverWait(driver, self.button_wait_timeout)
@@ -566,23 +736,7 @@ class AutomationService:
                 # Esperar un poco para que se procese la acción
                 time.sleep(2)
 
-                # Paso 4: Verificar que el clic fue exitoso (opcional)
-                try:
-                    # Verificar si hay algún cambio en la página después del clic
-                    # Esto depende de lo que hace el botón, pero generalmente podríamos
-                    # verificar cambios en la URL, nuevos elementos, etc.
-                    current_url = driver.current_url
-                    self._log(f"📍 URL después del clic: {current_url}")
-
-                    # Verificar si el botón cambió de estado o si aparecieron nuevos elementos
-                    # (esta verificación específica dependería del comportamiento esperado)
-
-                    return True, "Botón de pestaña clickeado exitosamente"
-
-                except Exception as e:
-                    self._log(f"Error verificando resultado del clic: {e}", "DEBUG")
-                    # Asumir que el clic fue exitoso si no hay errores graves
-                    return True, "Botón de pestaña clickeado (verificación parcial)"
+                return True, "Botón de pestaña clickeado exitosamente"
 
             except Exception as e:
                 error_msg = f"Error haciendo clic en el botón: {str(e)}"
@@ -591,6 +745,78 @@ class AutomationService:
 
         except Exception as e:
             error_msg = f"Error manejando botón de pestaña: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
+    def _handle_action_button_click(self, driver):
+        """Maneja el clic en el botón de acción final después de los dropdowns"""
+        try:
+            self._log("🔘 Iniciando clic en botón de acción final...")
+            wait = WebDriverWait(driver, self.action_button_wait_timeout)
+
+            # Paso 1: Buscar el botón de acción
+            self._log(f"Buscando botón de acción: {self.action_button_xpath}")
+            action_button = None
+
+            try:
+                action_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, self.action_button_xpath))
+                )
+                self._log("✅ Botón de acción encontrado")
+            except TimeoutException:
+                self._log("❌ No se encontró el botón de acción", "WARNING")
+                return False, "Botón de acción no encontrado en la página"
+
+            # Paso 2: Verificar que el botón esté visible y clickeable
+            try:
+                # Hacer scroll al botón si es necesario
+                self._log("Haciendo scroll al botón de acción...")
+                driver.execute_script("arguments[0].scrollIntoView(true);", action_button)
+                time.sleep(1)
+
+                # Verificar si el botón está habilitado
+                if not action_button.is_enabled():
+                    self._log("⚠️ El botón de acción está deshabilitado", "WARNING")
+                    return False, "El botón de acción está deshabilitado"
+
+                # Verificar si el botón está visible
+                if not action_button.is_displayed():
+                    self._log("⚠️ El botón de acción no está visible", "WARNING")
+                    return False, "El botón de acción no está visible"
+
+                self._log("✅ Botón de acción está listo para hacer clic")
+
+            except Exception as e:
+                self._log(f"Error verificando estado del botón de acción: {e}", "WARNING")
+                # Continuar de todas formas intentando hacer clic
+
+            # Paso 3: Hacer clic en el botón de acción
+            try:
+                self._log("Haciendo clic en botón de acción...")
+                action_button.click()
+                self._log("🎯 Clic en botón de acción ejecutado")
+
+                # Esperar un poco para que se procese la acción
+                time.sleep(3)
+
+                # Paso 4: Verificar que el clic fue exitoso
+                try:
+                    current_url = driver.current_url
+                    self._log(f"📍 URL después del clic en botón de acción: {current_url}")
+
+                    return True, "Botón de acción clickeado exitosamente"
+
+                except Exception as e:
+                    self._log(f"Error verificando resultado del clic en botón de acción: {e}", "DEBUG")
+                    return True, "Botón de acción clickeado (verificación parcial)"
+
+            except Exception as e:
+                error_msg = f"Error haciendo clic en el botón de acción: {str(e)}"
+                self._log(error_msg, "ERROR")
+                return False, error_msg
+
+        except Exception as e:
+            error_msg = f"Error manejando botón de acción: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg
 
@@ -686,7 +912,7 @@ class AutomationService:
             return False, error_msg
 
     def start_automation(self, username=None, password=None):
-        """Inicia el proceso de automatización completo con login, ambos dropdowns y clic en botón"""
+        """Inicia el proceso de automatización completo con login, tres dropdowns y ambos botones"""
         try:
             with self._lock:
                 if self.is_running:
@@ -801,7 +1027,7 @@ class AutomationService:
 
             try:
                 self._log("Driver configurado, ejecutando prueba completa...")
-                # Realizar prueba completa (login, ambos dropdowns y botón)
+                # Realizar prueba completa (login, tres dropdowns y ambos botones)
                 automation_success, automation_message = self._perform_login(driver, username, password)
 
                 if automation_success:
@@ -868,7 +1094,7 @@ class AutomationService:
             return False, error_msg
 
     def get_current_dropdown_values(self):
-        """Obtiene los valores actuales de ambos dropdowns"""
+        """Obtiene los valores actuales de los tres dropdowns"""
         if not self.driver or not self.is_running:
             return None
 
@@ -893,6 +1119,15 @@ class AutomationService:
                 self._log(f"Error obteniendo valor del segundo dropdown: {e}", "WARNING")
                 values['second_dropdown'] = None
 
+            # Tercer dropdown
+            try:
+                third_input = self.driver.find_element(By.XPATH, self.third_dropdown_xpaths['input'])
+                values['third_dropdown'] = third_input.get_attribute('value')
+                self._log(f"Valor actual tercer dropdown: '{values['third_dropdown']}'")
+            except Exception as e:
+                self._log(f"Error obteniendo valor del tercer dropdown: {e}", "WARNING")
+                values['third_dropdown'] = None
+
             return values
         except Exception as e:
             self._log(f"Error obteniendo valores de dropdowns: {e}", "WARNING")
@@ -907,6 +1142,19 @@ class AutomationService:
             button_success, button_message = self._handle_tab_button_click(self.driver)
             return button_success, button_message
         except Exception as e:
-            error_msg = f"Error haciendo clic manual en botón: {str(e)}"
+            error_msg = f"Error haciendo clic manual en botón de pestaña: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
+    def click_action_button_manually(self):
+        """Ejecuta solo el clic en el botón de acción (para uso manual)"""
+        if not self.driver or not self.is_running:
+            return False, "No hay automatización activa"
+
+        try:
+            action_success, action_message = self._handle_action_button_click(self.driver)
+            return action_success, action_message
+        except Exception as e:
+            error_msg = f"Error haciendo clic manual en botón de acción: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg
