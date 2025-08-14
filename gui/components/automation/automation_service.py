@@ -60,16 +60,16 @@ class AutomationService:
             ]
         }
 
-        # XPaths para segundo dropdown (102_UDR_FS)
+        # XPaths para segundo dropdown (102_UDR_FS) - CORREGIDOS
         self.second_dropdown_xpaths = {
             'trigger': '//*[@id="combo-1152-trigger-picker"]',
             'input': '//*[@id="combo-1152-inputEl"]',
             'options': [
-                '//li[@class="x-boundlist-item" and contains(text(), "102_UDR_FS")]',
-                '//li[contains(text(), "102_UDR_FS")]',
-                '//ul[contains(@id, "listEl")]//li[contains(text(), "102_UDR_FS")]',
-                '//li[contains(text(), "102_UDR")]',
-                '//*[@class="x-boundlist-item" and contains(text(), "102_UDR_FS")]'
+                '//li[text()="102_UDR_FS"]',  # Texto exacto - más preciso
+                '//li[@class="x-boundlist-item" and text()="102_UDR_FS"]',  # Con clase específica
+                '//ul[contains(@id, "listEl")]//li[text()="102_UDR_FS"]',  # Dentro del contenedor UL
+                '//li[@data-recordid="22395"]',  # Por data attribute específico del HTML
+                '//li[contains(text(), "102_UDR_FS")]'  # Fallback con contains
             ]
         }
 
@@ -81,7 +81,7 @@ class AutomationService:
         self.element_wait_timeout = 25
         self.implicit_wait_timeout = 10
         self.dropdown_wait_timeout = 15
-        self.second_dropdown_wait_timeout = 15
+        self.second_dropdown_wait_timeout = 20  # Aumentado para segundo dropdown
         self.button_wait_timeout = 15
 
     def _log(self, message, level="INFO"):
@@ -377,7 +377,7 @@ class AutomationService:
             return False, error_msg
 
     def _handle_second_dropdown_selection(self, driver):
-        """Maneja la selección automática del segundo dropdown (102_UDR_FS)"""
+        """Maneja la selección automática del segundo dropdown (102_UDR_FS) - CORREGIDO"""
         try:
             self._log("🔽 Iniciando selección del segundo dropdown (102_UDR_FS)...")
             wait = WebDriverWait(driver, self.second_dropdown_wait_timeout)
@@ -402,7 +402,7 @@ class AutomationService:
                 self._log(f"📋 Valor actual del segundo dropdown: '{current_value}'")
 
                 # Si ya tiene el valor correcto, no necesitamos hacer nada
-                if "102_UDR" in current_value:
+                if "102_UDR_FS" in current_value:
                     self._log("✅ El segundo dropdown ya tiene el valor correcto")
                     return True, "Segundo dropdown ya configurado con 102_UDR_FS"
 
@@ -415,32 +415,44 @@ class AutomationService:
             time.sleep(1)
             second_dropdown_trigger.click()
 
-            # Esperar más tiempo para que se abra y cargue el dropdown
-            time.sleep(3)
-            self._log("📋 Segundo dropdown abierto, esperando que se carguen las opciones...")
+            # Paso 4: ESPERAR EXPLÍCITAMENTE que aparezca la lista de opciones (CLAVE)
+            self._log("📋 Segundo dropdown abierto, esperando que aparezca la lista de opciones...")
 
-            # Esperar a que aparezca la lista de opciones
+            # Esperar a que aparezca el contenedor UL con las opciones
+            try:
+                WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((By.XPATH, "//ul[contains(@id, 'listEl')]"))
+                )
+                self._log("✅ Contenedor UL de opciones encontrado")
+            except TimeoutException:
+                self._log("❌ El contenedor de opciones no apareció", "WARNING")
+                return False, "Lista de opciones del segundo dropdown no se cargó"
+
+            # Esperar a que aparezcan elementos li dentro del contenedor
             try:
                 WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located(
                         (By.XPATH, "//ul[contains(@id, 'listEl')]//li[@class='x-boundlist-item']"))
                 )
-                self._log("✅ Lista de opciones del segundo dropdown cargada")
+                self._log("✅ Elementos li de opciones encontrados")
             except TimeoutException:
-                self._log("⚠️ Lista de opciones no se cargó completamente", "WARNING")
+                self._log("❌ Los elementos li no aparecieron", "WARNING")
+                return False, "Opciones individuales del segundo dropdown no se cargaron"
 
-            time.sleep(2)  # Espera adicional para asegurar carga completa
+            # Espera adicional para asegurar carga completa (como en el primer dropdown)
+            time.sleep(3)
+            self._log("📋 Lista de opciones completamente cargada, buscando '102_UDR_FS'...")
 
-            # Paso 4: Buscar y seleccionar la opción "102_UDR_FS"
+            # Paso 5: Buscar y seleccionar la opción "102_UDR_FS" con XPaths mejorados
             option_found = False
             selected_option_text = ""
 
-            # Intentar con diferentes XPaths para encontrar la opción
+            # Intentar con los XPaths corregidos
             for i, option_xpath in enumerate(self.second_dropdown_xpaths['options']):
                 try:
                     self._log(f"Probando XPath {i + 1} en segundo dropdown: {option_xpath}")
 
-                    # Esperar a que la opción esté disponible con timeout más largo
+                    # Esperar a que la opción específica esté disponible
                     option_element = WebDriverWait(driver, 8).until(
                         EC.element_to_be_clickable((By.XPATH, option_xpath))
                     )
@@ -449,14 +461,19 @@ class AutomationService:
                     selected_option_text = option_element.text.strip()
                     self._log(f"✅ Opción encontrada en segundo dropdown: '{selected_option_text}'")
 
-                    # Hacer clic en la opción
-                    driver.execute_script("arguments[0].scrollIntoView(true);", option_element)
-                    time.sleep(0.5)
-                    option_element.click()
+                    # Verificar que sea exactamente la opción que buscamos
+                    if "102_UDR_FS" in selected_option_text:
+                        # Hacer clic en la opción
+                        driver.execute_script("arguments[0].scrollIntoView(true);", option_element)
+                        time.sleep(0.5)
+                        option_element.click()
 
-                    option_found = True
-                    self._log(f"🎯 Opción seleccionada en segundo dropdown: '{selected_option_text}'")
-                    break
+                        option_found = True
+                        self._log(f"🎯 Opción seleccionada en segundo dropdown: '{selected_option_text}'")
+                        break
+                    else:
+                        self._log(f"⚠️ Opción encontrada pero no es la correcta: '{selected_option_text}'", "DEBUG")
+                        continue
 
                 except TimeoutException:
                     self._log(f"XPath {i + 1} no funcionó en segundo dropdown: {option_xpath}", "DEBUG")
@@ -465,25 +482,26 @@ class AutomationService:
                     self._log(f"Error con XPath {i + 1} en segundo dropdown: {str(e)}", "DEBUG")
                     continue
 
-            # Paso 5: Verificar si se seleccionó alguna opción
+            # Paso 6: Verificar si se seleccionó alguna opción
             if not option_found:
                 # Intentar cerrar el dropdown si sigue abierto
                 try:
                     second_dropdown_trigger.click()
+                    time.sleep(1)
                 except:
                     pass
 
                 self._log("❌ No se pudo encontrar la opción 102_UDR_FS", "WARNING")
                 return False, "No se encontró la opción '102_UDR_FS' en el segundo dropdown"
 
-            # Paso 6: Esperar y verificar que se haya seleccionado correctamente
-            time.sleep(2)
+            # Paso 7: Esperar y verificar que se haya seleccionado correctamente
+            time.sleep(3)  # Espera más larga para asegurar actualización
             try:
                 updated_input = driver.find_element(By.XPATH, self.second_dropdown_xpaths['input'])
                 final_value = updated_input.get_attribute('value')
                 self._log(f"✅ Valor final del segundo dropdown: '{final_value}'")
 
-                if "102_UDR" in final_value:
+                if "102_UDR_FS" in final_value:
                     return True, f"Segundo dropdown seleccionado exitosamente: '{final_value}'"
                 else:
                     return False, f"Segundo dropdown no se actualizó correctamente. Valor: '{final_value}'"
