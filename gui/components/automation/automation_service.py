@@ -1,9 +1,10 @@
 # automation_service.py
 # Ubicación: /syncro_bot/gui/components/automation/automation_service.py
 """
-Servicio de automatización con login automático, selección de dropdown y clic en botón de pestaña.
+Servicio de automatización con login automático, selección de dos dropdowns y clic en botón de pestaña.
 Maneja la configuración del navegador, proceso de login automático, selección automática
-del dropdown "140_AUTO INSTALACION", clic en botón de pestaña y verificación de credenciales.
+del primer dropdown "140_AUTO INSTALACION", segundo dropdown "102_UDR_FS",
+clic en botón de pestaña y verificación de credenciales.
 """
 
 import threading
@@ -29,7 +30,7 @@ from .credentials_manager import CredentialsManager
 
 
 class AutomationService:
-    """Servicio de automatización con login automático, selección de dropdown y clic en botón"""
+    """Servicio de automatización con login automático, selección de dropdowns y clic en botón"""
 
     def __init__(self, logger=None):
         self.is_running = False
@@ -46,7 +47,7 @@ class AutomationService:
             'login_button': '//*[@id="button-1041-btnEl"]'
         }
 
-        # XPaths para dropdown de despacho
+        # XPaths para primer dropdown de despacho (140_AUTO INSTALACION)
         self.dropdown_xpaths = {
             'trigger': '//*[@id="combo-1077-trigger-picker"]',
             'input': '//*[@id="combo-1077-inputEl"]',
@@ -59,6 +60,19 @@ class AutomationService:
             ]
         }
 
+        # XPaths para segundo dropdown (102_UDR_FS)
+        self.second_dropdown_xpaths = {
+            'trigger': '//*[@id="combo-1152-trigger-picker"]',
+            'input': '//*[@id="combo-1152-inputEl"]',
+            'options': [
+                '//li[@class="x-boundlist-item" and contains(text(), "102_UDR_FS")]',
+                '//li[contains(text(), "102_UDR_FS")]',
+                '//ul[contains(@id, "listEl")]//li[contains(text(), "102_UDR_FS")]',
+                '//li[contains(text(), "102_UDR")]',
+                '//*[@class="x-boundlist-item" and contains(text(), "102_UDR_FS")]'
+            ]
+        }
+
         # XPath para el botón de pestaña
         self.tab_button_xpath = '//*[@id="tab-1030-btnEl"]'
 
@@ -67,6 +81,7 @@ class AutomationService:
         self.element_wait_timeout = 25
         self.implicit_wait_timeout = 10
         self.dropdown_wait_timeout = 15
+        self.second_dropdown_wait_timeout = 15
         self.button_wait_timeout = 15
 
     def _log(self, message, level="INFO"):
@@ -212,23 +227,31 @@ class AutomationService:
             if not login_success:
                 return False, login_message
 
-            # Si el login fue exitoso, proceder con la selección del dropdown
-            self._log("Login exitoso, procediendo con selección de dropdown...")
+            # Si el login fue exitoso, proceder con la selección del primer dropdown
+            self._log("Login exitoso, procediendo con primer dropdown...")
             dropdown_success, dropdown_message = self._handle_dropdown_selection(driver)
 
             if not dropdown_success:
-                self._log(f"Advertencia en dropdown: {dropdown_message}", "WARNING")
+                self._log(f"Advertencia en primer dropdown: {dropdown_message}", "WARNING")
                 return True, f"Login exitoso. {dropdown_message}"
 
-            # Si el dropdown fue exitoso, proceder con el clic en el botón de pestaña
-            self._log("Dropdown configurado, procediendo con clic en botón de pestaña...")
+            # Si el primer dropdown fue exitoso, proceder con el clic en el botón de pestaña
+            self._log("Primer dropdown configurado, procediendo con clic en botón de pestaña...")
             button_success, button_message = self._handle_tab_button_click(driver)
 
             if not button_success:
                 self._log(f"Advertencia en botón de pestaña: {button_message}", "WARNING")
-                return True, f"Login y dropdown completados. {button_message}"
+                return True, f"Login y primer dropdown completados. {button_message}"
 
-            return True, f"Automatización completa: Login, dropdown y botón de pestaña ejecutados exitosamente. {button_message}"
+            # Después del botón de pestaña, proceder con el segundo dropdown
+            self._log("Botón de pestaña ejecutado, procediendo con segundo dropdown...")
+            second_dropdown_success, second_dropdown_message = self._handle_second_dropdown_selection(driver)
+
+            if not second_dropdown_success:
+                self._log(f"Advertencia en segundo dropdown: {second_dropdown_message}", "WARNING")
+                return True, f"Login, primer dropdown y botón completados. {second_dropdown_message}"
+
+            return True, f"Automatización completa exitosa: Login, primer dropdown, botón de pestaña y segundo dropdown ejecutados. {second_dropdown_message}"
 
         except TimeoutException:
             current_url = driver.current_url if driver else "N/A"
@@ -245,47 +268,47 @@ class AutomationService:
             return False, error_msg
 
     def _handle_dropdown_selection(self, driver):
-        """Maneja la selección automática del dropdown de despacho"""
+        """Maneja la selección automática del primer dropdown de despacho (140_AUTO INSTALACION)"""
         try:
-            self._log("🔽 Iniciando selección de dropdown de despacho...")
+            self._log("🔽 Iniciando selección del primer dropdown (140_AUTO INSTALACION)...")
             wait = WebDriverWait(driver, self.dropdown_wait_timeout)
 
             # Paso 1: Buscar el trigger del dropdown
-            self._log("Buscando trigger del dropdown...")
+            self._log("Buscando trigger del primer dropdown...")
             dropdown_trigger = None
 
             try:
                 dropdown_trigger = wait.until(
                     EC.element_to_be_clickable((By.XPATH, self.dropdown_xpaths['trigger']))
                 )
-                self._log("✅ Trigger del dropdown encontrado")
+                self._log("✅ Trigger del primer dropdown encontrado")
             except TimeoutException:
-                self._log("❌ No se encontró el trigger del dropdown", "WARNING")
-                return False, "Dropdown de despacho no encontrado en la página"
+                self._log("❌ No se encontró el trigger del primer dropdown", "WARNING")
+                return False, "Primer dropdown de despacho no encontrado en la página"
 
             # Paso 2: Verificar valor actual del input
             try:
                 current_input = driver.find_element(By.XPATH, self.dropdown_xpaths['input'])
                 current_value = current_input.get_attribute('value')
-                self._log(f"📋 Valor actual del dropdown: '{current_value}'")
+                self._log(f"📋 Valor actual del primer dropdown: '{current_value}'")
 
                 # Si ya tiene el valor correcto, no necesitamos hacer nada
                 if "140_AUTO" in current_value:
-                    self._log("✅ El dropdown ya tiene el valor correcto")
-                    return True, "Dropdown ya configurado con 140_AUTO INSTALACION"
+                    self._log("✅ El primer dropdown ya tiene el valor correcto")
+                    return True, "Primer dropdown ya configurado con 140_AUTO INSTALACION"
 
             except Exception as e:
-                self._log(f"No se pudo leer valor actual: {e}", "DEBUG")
+                self._log(f"No se pudo leer valor actual del primer dropdown: {e}", "DEBUG")
 
             # Paso 3: Hacer clic en el trigger para abrir el dropdown
-            self._log("Haciendo clic en trigger del dropdown...")
+            self._log("Haciendo clic en trigger del primer dropdown...")
             driver.execute_script("arguments[0].scrollIntoView(true);", dropdown_trigger)
             time.sleep(1)
             dropdown_trigger.click()
 
             # Esperar un poco para que se abra el dropdown
             time.sleep(2)
-            self._log("📋 Dropdown abierto, buscando opciones...")
+            self._log("📋 Primer dropdown abierto, buscando opciones...")
 
             # Paso 4: Buscar y seleccionar la opción "140_AUTO INSTALACION"
             option_found = False
@@ -311,7 +334,7 @@ class AutomationService:
                     option_element.click()
 
                     option_found = True
-                    self._log(f"🎯 Opción seleccionada: '{selected_option_text}'")
+                    self._log(f"🎯 Opción seleccionada en primer dropdown: '{selected_option_text}'")
                     break
 
                 except TimeoutException:
@@ -330,31 +353,152 @@ class AutomationService:
                     pass
 
                 self._log("❌ No se pudo encontrar la opción 140_AUTO INSTALACION", "WARNING")
-                return False, "No se encontró la opción '140_AUTO INSTALACION' en el dropdown"
+                return False, "No se encontró la opción '140_AUTO INSTALACION' en el primer dropdown"
 
             # Paso 6: Esperar y verificar que se haya seleccionado correctamente
             time.sleep(2)
             try:
                 updated_input = driver.find_element(By.XPATH, self.dropdown_xpaths['input'])
                 final_value = updated_input.get_attribute('value')
-                self._log(f"✅ Valor final del dropdown: '{final_value}'")
+                self._log(f"✅ Valor final del primer dropdown: '{final_value}'")
 
                 if "140_AUTO" in final_value:
-                    return True, f"Dropdown seleccionado exitosamente: '{final_value}'"
+                    return True, f"Primer dropdown seleccionado exitosamente: '{final_value}'"
                 else:
-                    return False, f"Dropdown no se actualizó correctamente. Valor: '{final_value}'"
+                    return False, f"Primer dropdown no se actualizó correctamente. Valor: '{final_value}'"
 
             except Exception as e:
-                self._log(f"Error verificando selección final: {e}", "WARNING")
-                return True, f"Opción seleccionada: '{selected_option_text}' (verificación parcial)"
+                self._log(f"Error verificando selección final del primer dropdown: {e}", "WARNING")
+                return True, f"Opción seleccionada en primer dropdown: '{selected_option_text}' (verificación parcial)"
 
         except Exception as e:
-            error_msg = f"Error manejando dropdown: {str(e)}"
+            error_msg = f"Error manejando primer dropdown: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
+    def _handle_second_dropdown_selection(self, driver):
+        """Maneja la selección automática del segundo dropdown (102_UDR_FS)"""
+        try:
+            self._log("🔽 Iniciando selección del segundo dropdown (102_UDR_FS)...")
+            wait = WebDriverWait(driver, self.second_dropdown_wait_timeout)
+
+            # Paso 1: Buscar el trigger del segundo dropdown
+            self._log("Buscando trigger del segundo dropdown...")
+            second_dropdown_trigger = None
+
+            try:
+                second_dropdown_trigger = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, self.second_dropdown_xpaths['trigger']))
+                )
+                self._log("✅ Trigger del segundo dropdown encontrado")
+            except TimeoutException:
+                self._log("❌ No se encontró el trigger del segundo dropdown", "WARNING")
+                return False, "Segundo dropdown no encontrado en la página"
+
+            # Paso 2: Verificar valor actual del input
+            try:
+                current_input = driver.find_element(By.XPATH, self.second_dropdown_xpaths['input'])
+                current_value = current_input.get_attribute('value')
+                self._log(f"📋 Valor actual del segundo dropdown: '{current_value}'")
+
+                # Si ya tiene el valor correcto, no necesitamos hacer nada
+                if "102_UDR" in current_value:
+                    self._log("✅ El segundo dropdown ya tiene el valor correcto")
+                    return True, "Segundo dropdown ya configurado con 102_UDR_FS"
+
+            except Exception as e:
+                self._log(f"No se pudo leer valor actual del segundo dropdown: {e}", "DEBUG")
+
+            # Paso 3: Hacer clic en el trigger para abrir el segundo dropdown
+            self._log("Haciendo clic en trigger del segundo dropdown...")
+            driver.execute_script("arguments[0].scrollIntoView(true);", second_dropdown_trigger)
+            time.sleep(1)
+            second_dropdown_trigger.click()
+
+            # Esperar más tiempo para que se abra y cargue el dropdown
+            time.sleep(3)
+            self._log("📋 Segundo dropdown abierto, esperando que se carguen las opciones...")
+
+            # Esperar a que aparezca la lista de opciones
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH, "//ul[contains(@id, 'listEl')]//li[@class='x-boundlist-item']"))
+                )
+                self._log("✅ Lista de opciones del segundo dropdown cargada")
+            except TimeoutException:
+                self._log("⚠️ Lista de opciones no se cargó completamente", "WARNING")
+
+            time.sleep(2)  # Espera adicional para asegurar carga completa
+
+            # Paso 4: Buscar y seleccionar la opción "102_UDR_FS"
+            option_found = False
+            selected_option_text = ""
+
+            # Intentar con diferentes XPaths para encontrar la opción
+            for i, option_xpath in enumerate(self.second_dropdown_xpaths['options']):
+                try:
+                    self._log(f"Probando XPath {i + 1} en segundo dropdown: {option_xpath}")
+
+                    # Esperar a que la opción esté disponible con timeout más largo
+                    option_element = WebDriverWait(driver, 8).until(
+                        EC.element_to_be_clickable((By.XPATH, option_xpath))
+                    )
+
+                    # Obtener texto de la opción para logging
+                    selected_option_text = option_element.text.strip()
+                    self._log(f"✅ Opción encontrada en segundo dropdown: '{selected_option_text}'")
+
+                    # Hacer clic en la opción
+                    driver.execute_script("arguments[0].scrollIntoView(true);", option_element)
+                    time.sleep(0.5)
+                    option_element.click()
+
+                    option_found = True
+                    self._log(f"🎯 Opción seleccionada en segundo dropdown: '{selected_option_text}'")
+                    break
+
+                except TimeoutException:
+                    self._log(f"XPath {i + 1} no funcionó en segundo dropdown: {option_xpath}", "DEBUG")
+                    continue
+                except Exception as e:
+                    self._log(f"Error con XPath {i + 1} en segundo dropdown: {str(e)}", "DEBUG")
+                    continue
+
+            # Paso 5: Verificar si se seleccionó alguna opción
+            if not option_found:
+                # Intentar cerrar el dropdown si sigue abierto
+                try:
+                    second_dropdown_trigger.click()
+                except:
+                    pass
+
+                self._log("❌ No se pudo encontrar la opción 102_UDR_FS", "WARNING")
+                return False, "No se encontró la opción '102_UDR_FS' en el segundo dropdown"
+
+            # Paso 6: Esperar y verificar que se haya seleccionado correctamente
+            time.sleep(2)
+            try:
+                updated_input = driver.find_element(By.XPATH, self.second_dropdown_xpaths['input'])
+                final_value = updated_input.get_attribute('value')
+                self._log(f"✅ Valor final del segundo dropdown: '{final_value}'")
+
+                if "102_UDR" in final_value:
+                    return True, f"Segundo dropdown seleccionado exitosamente: '{final_value}'"
+                else:
+                    return False, f"Segundo dropdown no se actualizó correctamente. Valor: '{final_value}'"
+
+            except Exception as e:
+                self._log(f"Error verificando selección final del segundo dropdown: {e}", "WARNING")
+                return True, f"Opción seleccionada en segundo dropdown: '{selected_option_text}' (verificación parcial)"
+
+        except Exception as e:
+            error_msg = f"Error manejando segundo dropdown: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg
 
     def _handle_tab_button_click(self, driver):
-        """Maneja el clic en el botón de pestaña después de la selección del dropdown"""
+        """Maneja el clic en el botón de pestaña después de la selección de ambos dropdowns"""
         try:
             self._log("🔘 Iniciando clic en botón de pestaña...")
             wait = WebDriverWait(driver, self.button_wait_timeout)
@@ -524,7 +668,7 @@ class AutomationService:
             return False, error_msg
 
     def start_automation(self, username=None, password=None):
-        """Inicia el proceso de automatización completo con login, dropdown y clic en botón"""
+        """Inicia el proceso de automatización completo con login, ambos dropdowns y clic en botón"""
         try:
             with self._lock:
                 if self.is_running:
@@ -639,7 +783,7 @@ class AutomationService:
 
             try:
                 self._log("Driver configurado, ejecutando prueba completa...")
-                # Realizar prueba completa (login, dropdown y botón)
+                # Realizar prueba completa (login, ambos dropdowns y botón)
                 automation_success, automation_message = self._perform_login(driver, username, password)
 
                 if automation_success:
@@ -705,18 +849,35 @@ class AutomationService:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    def get_current_dropdown_value(self):
-        """Obtiene el valor actual del dropdown de despacho"""
+    def get_current_dropdown_values(self):
+        """Obtiene los valores actuales de ambos dropdowns"""
         if not self.driver or not self.is_running:
             return None
 
         try:
-            input_element = self.driver.find_element(By.XPATH, self.dropdown_xpaths['input'])
-            current_value = input_element.get_attribute('value')
-            self._log(f"Valor actual del dropdown: '{current_value}'")
-            return current_value
+            values = {}
+
+            # Primer dropdown
+            try:
+                first_input = self.driver.find_element(By.XPATH, self.dropdown_xpaths['input'])
+                values['first_dropdown'] = first_input.get_attribute('value')
+                self._log(f"Valor actual primer dropdown: '{values['first_dropdown']}'")
+            except Exception as e:
+                self._log(f"Error obteniendo valor del primer dropdown: {e}", "WARNING")
+                values['first_dropdown'] = None
+
+            # Segundo dropdown
+            try:
+                second_input = self.driver.find_element(By.XPATH, self.second_dropdown_xpaths['input'])
+                values['second_dropdown'] = second_input.get_attribute('value')
+                self._log(f"Valor actual segundo dropdown: '{values['second_dropdown']}'")
+            except Exception as e:
+                self._log(f"Error obteniendo valor del segundo dropdown: {e}", "WARNING")
+                values['second_dropdown'] = None
+
+            return values
         except Exception as e:
-            self._log(f"Error obteniendo valor del dropdown: {e}", "WARNING")
+            self._log(f"Error obteniendo valores de dropdowns: {e}", "WARNING")
             return None
 
     def click_tab_button_manually(self):
@@ -731,13 +892,3 @@ class AutomationService:
             error_msg = f"Error haciendo clic manual en botón: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg
-
-    def change_dropdown_value(self, target_value):
-        """Cambia el valor del dropdown a un valor específico (funcionalidad futura)"""
-        if not self.driver or not self.is_running:
-            return False, "No hay automatización activa"
-
-        # Esta funcionalidad se puede implementar en el futuro si se necesita
-        # cambiar dinámicamente el valor del dropdown
-        self._log(f"Funcionalidad de cambio dinámico no implementada: {target_value}", "INFO")
-        return False, "Funcionalidad no implementada - valor hardcoded a 140_AUTO INSTALACION"
