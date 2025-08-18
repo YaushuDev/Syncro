@@ -2,11 +2,14 @@
 # Ubicación: /syncro_bot/gui/components/automation/handlers/data_extractor.py
 """
 Extractor especializado de datos de la tabla de resultados con funcionalidad
-de doble clic para obtener números de teléfono. Maneja la extracción completa
-incluyendo navegación a detalles de cliente y retorno a tabla principal.
+de OCR para obtener números de teléfono. Toma screenshots del popup de cliente
+y usa análisis de imagen para extraer el campo "Tel. celular:" de forma robusta.
 """
 
 import time
+import os
+import tempfile
+import re
 from typing import List, Dict, Optional
 
 # Importaciones para Selenium
@@ -21,9 +24,25 @@ try:
 except ImportError:
     SELENIUM_AVAILABLE = False
 
+# Importaciones para OCR
+try:
+    import easyocr
+
+    OCR_EASYOCR_AVAILABLE = True
+except ImportError:
+    OCR_EASYOCR_AVAILABLE = False
+
+try:
+    import pytesseract
+    from PIL import Image
+
+    OCR_TESSERACT_AVAILABLE = True
+except ImportError:
+    OCR_TESSERACT_AVAILABLE = False
+
 
 class DataExtractor:
-    """Extractor especializado de datos con funcionalidad de doble clic para teléfonos"""
+    """Extractor especializado de datos con funcionalidad OCR para teléfonos"""
 
     def __init__(self, web_driver_manager, logger=None):
         self.web_driver_manager = web_driver_manager
@@ -49,13 +68,10 @@ class DataExtractor:
             'despacho': 'gridcolumn-1116'  # Despacho
         }
 
-        # 🆕 Selectores robustos para el campo de teléfono
-        self.phone_field_selectors = [
-            'input[data-ref="inputEl"][role="textbox"][style*="#E0F5FF"]',  # Preferido
-            'input[data-ref="inputEl"][class*="x-form-field x-form-text"]',  # Backup 1
-            'input[style*="background-color: #E0F5FF"]',  # Backup 2
-            'input[role="textbox"][class*="x-form-text-default"]'  # Backup 3
-        ]
+        # 🆕 Configuración OCR
+        self.ocr_reader = None
+        self.ocr_method = None
+        self._initialize_ocr()
 
         # 🆕 XPath para el botón de retorno a la tabla
         self.return_button_xpath = '//*[@id="tab-1030-btnInnerEl"]'
@@ -63,8 +79,30 @@ class DataExtractor:
         # Configuración de timeouts
         self.data_wait_timeout = 15
         self.extraction_wait = 3
-        self.phone_popup_timeout = 10  # 🆕 Timeout para popup de teléfono
-        self.phone_extraction_delay = 2  # 🆕 Delay después del doble clic
+        self.phone_popup_timeout = 10
+        self.phone_extraction_delay = 2
+
+        # 🆕 Directorio temporal para screenshots
+        self.temp_dir = tempfile.gettempdir()
+
+    def _initialize_ocr(self):
+        """🆕 Inicializa el motor OCR (prioriza EasyOCR, fallback a Tesseract)"""
+        try:
+            if OCR_EASYOCR_AVAILABLE:
+                self._log("🔍 Inicializando EasyOCR...")
+                self.ocr_reader = easyocr.Reader(['es', 'en'])  # Español e Inglés
+                self.ocr_method = 'easyocr'
+                self._log("✅ EasyOCR inicializado correctamente")
+            elif OCR_TESSERACT_AVAILABLE:
+                self._log("🔍 EasyOCR no disponible, usando Tesseract...")
+                self.ocr_method = 'tesseract'
+                self._log("✅ Tesseract configurado como fallback")
+            else:
+                self._log("❌ Ningún motor OCR disponible", "ERROR")
+                self.ocr_method = None
+        except Exception as e:
+            self._log(f"❌ Error inicializando OCR: {str(e)}", "ERROR")
+            self.ocr_method = None
 
     def _log(self, message, level="INFO"):
         """Log interno con fallback"""
@@ -74,9 +112,13 @@ class DataExtractor:
             print(f"[{level}] {message}")
 
     def extract_table_data(self, driver) -> tuple[bool, str, List[Dict]]:
-        """Extrae todos los datos de la tabla incluyendo números de teléfono"""
+        """Extrae todos los datos de la tabla incluyendo números de teléfono con OCR"""
         try:
-            self._log("📊 Iniciando extracción completa de datos (incluyendo teléfonos)...")
+            self._log("📊 Iniciando extracción completa de datos (con OCR para teléfonos)...")
+
+            # Verificar que OCR esté disponible
+            if not self.ocr_method:
+                self._log("⚠️ OCR no disponible, extrayendo sin teléfonos", "WARNING")
 
             # Esperar que aparezca la tabla con datos
             if not self._wait_for_data_table(driver):
@@ -87,13 +129,13 @@ class DataExtractor:
             if not data_rows:
                 return False, "No se encontraron filas de datos en la tabla", []
 
-            self._log(f"📋 Encontradas {len(data_rows)} filas de datos para extracción completa")
+            self._log(f"📋 Encontradas {len(data_rows)} filas de datos para extracción con OCR")
 
-            # Extraer datos de cada fila (INCLUYE TELÉFONOS)
+            # Extraer datos de cada fila (INCLUYE TELÉFONOS CON OCR)
             extracted_data = []
             for row_index, row_element in enumerate(data_rows):
                 try:
-                    row_data = self._extract_row_data_with_phone(driver, row_element, row_index)
+                    row_data = self._extract_row_data_with_ocr_phone(driver, row_element, row_index)
                     if row_data:
                         extracted_data.append(row_data)
                         cliente_nombre = row_data.get('cliente', 'N/A')
@@ -106,27 +148,35 @@ class DataExtractor:
                     continue
 
             if extracted_data:
-                success_message = f"Extracción completa: {len(extracted_data)} registros con teléfonos obtenidos"
+                phones_extracted = sum(1 for record in extracted_data
+                                       if record.get('telefono_cliente') and
+                                       record.get('telefono_cliente') not in ['Sin teléfono', 'Error OCR',
+                                                                              'Error popup'])
+                success_message = f"Extracción completa con OCR: {len(extracted_data)} registros, {phones_extracted} teléfonos obtenidos"
                 self._log(f"🎉 {success_message}")
                 return True, success_message, extracted_data
             else:
                 return False, "No se pudieron extraer datos de ninguna fila", []
 
         except Exception as e:
-            error_msg = f"Error durante extracción completa: {str(e)}"
+            error_msg = f"Error durante extracción completa con OCR: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg, []
 
-    def _extract_row_data_with_phone(self, driver, row_element, row_index: int) -> Optional[Dict]:
-        """🆕 Extrae datos de una fila incluyendo el número de teléfono mediante doble clic"""
+    def _extract_row_data_with_ocr_phone(self, driver, row_element, row_index: int) -> Optional[Dict]:
+        """🆕 Extrae datos de una fila incluyendo el número de teléfono mediante OCR"""
         try:
             # PASO 1: Extraer datos básicos normalmente
             row_data = self._extract_basic_row_data(row_element, row_index)
             if not row_data:
                 return None
 
-            # PASO 2: Obtener número de teléfono mediante doble clic
-            telefono = self._extract_phone_number(driver, row_element, row_index)
+            # PASO 2: Obtener número de teléfono mediante OCR
+            if self.ocr_method:
+                telefono = self._extract_phone_with_ocr(driver, row_element, row_index)
+            else:
+                telefono = "OCR no disponible"
+
             row_data['telefono_cliente'] = telefono
 
             return row_data
@@ -134,6 +184,264 @@ class DataExtractor:
         except Exception as e:
             self._log(f"Error extrayendo datos completos de fila {row_index + 1}: {str(e)}", "ERROR")
             return None
+
+    def _extract_phone_with_ocr(self, driver, row_element, row_index: int) -> str:
+        """🆕 Extrae el número de teléfono usando OCR después del doble clic"""
+        screenshot_path = None
+        try:
+            self._log(f"📞 Extrayendo teléfono con OCR para fila {row_index + 1}...")
+
+            # PASO 1: Encontrar la celda del cliente
+            cliente_cell = self._find_client_cell(row_element)
+            if not cliente_cell:
+                self._log(f"⚠️ No se encontró celda de cliente en fila {row_index + 1}", "WARNING")
+                return "Sin celda cliente"
+
+            # PASO 2: Hacer scroll a la celda para asegurar visibilidad
+            self.web_driver_manager.scroll_to_element(cliente_cell)
+            time.sleep(0.5)
+
+            # PASO 3: Ejecutar doble clic
+            if not self._perform_double_click(driver, cliente_cell, row_index):
+                return "Error en doble clic"
+
+            # PASO 4: Esperar que aparezca el popup
+            time.sleep(self.phone_extraction_delay)
+
+            # PASO 5: 🎯 TOMAR SCREENSHOT DEL POPUP
+            screenshot_path = self._take_popup_screenshot(driver, row_index)
+            if not screenshot_path:
+                return "Error captura"
+
+            # PASO 6: 🔍 ANALIZAR SCREENSHOT CON OCR
+            phone_number = self._analyze_screenshot_for_phone(screenshot_path, row_index)
+
+            # PASO 7: Regresar a la tabla principal
+            if not self._return_to_main_table(driver, row_index):
+                self._log(f"⚠️ Advertencia: no se pudo regresar a tabla principal después de fila {row_index + 1}",
+                          "WARNING")
+
+            return phone_number
+
+        except Exception as e:
+            self._log(f"❌ Error extrayendo teléfono con OCR de fila {row_index + 1}: {str(e)}", "ERROR")
+            # Intentar regresar a la tabla en caso de error
+            try:
+                self._return_to_main_table(driver, row_index)
+            except:
+                pass
+            return "Error OCR"
+        finally:
+            # 🧹 LIMPIAR SCREENSHOT
+            if screenshot_path and os.path.exists(screenshot_path):
+                try:
+                    os.remove(screenshot_path)
+                    self._log(f"🗑️ Screenshot temporal eliminado: {screenshot_path}")
+                except Exception as e:
+                    self._log(f"⚠️ No se pudo eliminar screenshot: {e}", "WARNING")
+
+    def _take_popup_screenshot(self, driver, row_index: int) -> Optional[str]:
+        """🆕 Toma screenshot del popup de cliente"""
+        try:
+            # Generar nombre único para el screenshot
+            timestamp = int(time.time() * 1000)
+            screenshot_filename = f"popup_client_{row_index}_{timestamp}.png"
+            screenshot_path = os.path.join(self.temp_dir, screenshot_filename)
+
+            # Esperar un momento para asegurar que el popup esté completamente cargado
+            time.sleep(1)
+
+            # Tomar screenshot de toda la ventana
+            success = driver.save_screenshot(screenshot_path)
+
+            if success and os.path.exists(screenshot_path):
+                self._log(f"📸 Screenshot capturado para fila {row_index + 1}: {screenshot_path}")
+                return screenshot_path
+            else:
+                self._log(f"❌ Error capturando screenshot para fila {row_index + 1}", "ERROR")
+                return None
+
+        except Exception as e:
+            self._log(f"❌ Error en captura de screenshot fila {row_index + 1}: {str(e)}", "ERROR")
+            return None
+
+    def _analyze_screenshot_for_phone(self, screenshot_path: str, row_index: int) -> str:
+        """🆕 Analiza el screenshot con OCR para encontrar el teléfono"""
+        try:
+            self._log(f"🔍 Analizando screenshot con OCR para fila {row_index + 1}...")
+
+            if self.ocr_method == 'easyocr':
+                return self._analyze_with_easyocr(screenshot_path, row_index)
+            elif self.ocr_method == 'tesseract':
+                return self._analyze_with_tesseract(screenshot_path, row_index)
+            else:
+                return "OCR no disponible"
+
+        except Exception as e:
+            self._log(f"❌ Error analizando screenshot fila {row_index + 1}: {str(e)}", "ERROR")
+            return "Error análisis"
+
+    def _analyze_with_easyocr(self, screenshot_path: str, row_index: int) -> str:
+        """🆕 Analiza imagen con EasyOCR buscando 'Tel. celular:'"""
+        try:
+            # Leer texto de la imagen
+            results = self.ocr_reader.readtext(screenshot_path)
+
+            # Buscar el patrón "Tel. celular:" y extraer el número
+            for i, (bbox, text, confidence) in enumerate(results):
+                text_clean = text.strip()
+
+                # Buscar "Tel. celular:" o variaciones
+                if self._is_phone_label(text_clean):
+                    self._log(f"🎯 Encontrado label teléfono en fila {row_index + 1}: '{text_clean}'")
+
+                    # Buscar el número en los siguientes elementos de texto
+                    phone_number = self._find_phone_number_nearby(results, i)
+                    if phone_number:
+                        self._log(f"📞 Teléfono extraído con EasyOCR fila {row_index + 1}: {phone_number}")
+                        return phone_number
+
+            # Si no encontramos con el método principal, buscar cualquier número que parezca teléfono
+            phone_number = self._extract_any_phone_pattern(results, row_index)
+            if phone_number:
+                return phone_number
+
+            self._log(f"⚠️ No se encontró teléfono en OCR fila {row_index + 1}", "WARNING")
+            return "Sin teléfono"
+
+        except Exception as e:
+            self._log(f"❌ Error en EasyOCR fila {row_index + 1}: {str(e)}", "ERROR")
+            return "Error EasyOCR"
+
+    def _analyze_with_tesseract(self, screenshot_path: str, row_index: int) -> str:
+        """🆕 Analiza imagen con Tesseract buscando 'Tel. celular:'"""
+        try:
+            # Abrir imagen
+            image = Image.open(screenshot_path)
+
+            # Extraer texto
+            text = pytesseract.image_to_string(image, lang='spa+eng')
+            lines = text.split('\n')
+
+            # Buscar líneas que contengan "Tel. celular:"
+            for i, line in enumerate(lines):
+                if self._is_phone_label(line):
+                    self._log(f"🎯 Encontrado label teléfono en fila {row_index + 1}: '{line}'")
+
+                    # Extraer número de la misma línea o líneas cercanas
+                    phone_number = self._extract_phone_from_lines(lines, i)
+                    if phone_number:
+                        self._log(f"📞 Teléfono extraído con Tesseract fila {row_index + 1}: {phone_number}")
+                        return phone_number
+
+            # Buscar cualquier patrón de teléfono en todo el texto
+            phone_number = self._extract_phone_pattern_from_text(text, row_index)
+            if phone_number:
+                return phone_number
+
+            self._log(f"⚠️ No se encontró teléfono en OCR fila {row_index + 1}", "WARNING")
+            return "Sin teléfono"
+
+        except Exception as e:
+            self._log(f"❌ Error en Tesseract fila {row_index + 1}: {str(e)}", "ERROR")
+            return "Error Tesseract"
+
+    def _is_phone_label(self, text: str) -> bool:
+        """🆕 Verifica si el texto contiene etiquetas de teléfono"""
+        text_lower = text.lower().strip()
+        phone_labels = [
+            'tel. celular',
+            'tel celular',
+            'teléfono celular',
+            'telefono celular',
+            'tel móvil',
+            'tel movil',
+            'celular',
+            'tel.:',
+            'tel:'
+        ]
+
+        return any(label in text_lower for label in phone_labels)
+
+    def _find_phone_number_nearby(self, results: List, label_index: int) -> Optional[str]:
+        """🆕 Busca número de teléfono cerca del label encontrado (EasyOCR)"""
+        # Buscar en los siguientes 3 elementos
+        for i in range(label_index + 1, min(len(results), label_index + 4)):
+            bbox, text, confidence = results[i]
+            phone = self._extract_phone_pattern(text.strip())
+            if phone:
+                return phone
+
+        # Buscar en el mismo elemento del label
+        bbox, text, confidence = results[label_index]
+        phone = self._extract_phone_pattern(text)
+        if phone:
+            return phone
+
+        return None
+
+    def _extract_phone_from_lines(self, lines: List[str], label_line_index: int) -> Optional[str]:
+        """🆕 Extrae teléfono de líneas cercanas al label (Tesseract)"""
+        # Buscar en la misma línea
+        phone = self._extract_phone_pattern(lines[label_line_index])
+        if phone:
+            return phone
+
+        # Buscar en las siguientes 3 líneas
+        for i in range(label_line_index + 1, min(len(lines), label_line_index + 4)):
+            phone = self._extract_phone_pattern(lines[i])
+            if phone:
+                return phone
+
+        return None
+
+    def _extract_any_phone_pattern(self, results: List, row_index: int) -> Optional[str]:
+        """🆕 Busca cualquier patrón de teléfono en los resultados OCR"""
+        for bbox, text, confidence in results:
+            phone = self._extract_phone_pattern(text.strip())
+            if phone:
+                self._log(f"📞 Teléfono encontrado por patrón en fila {row_index + 1}: {phone}")
+                return phone
+        return None
+
+    def _extract_phone_pattern_from_text(self, text: str, row_index: int) -> Optional[str]:
+        """🆕 Extrae patrón de teléfono de texto completo"""
+        phone = self._extract_phone_pattern(text)
+        if phone:
+            self._log(f"📞 Teléfono encontrado por patrón en texto completo fila {row_index + 1}: {phone}")
+        return phone
+
+    def _extract_phone_pattern(self, text: str) -> Optional[str]:
+        """🆕 Extrae número de teléfono usando patrones regex"""
+        if not text:
+            return None
+
+        # Patrones para números de teléfono costarricenses
+        patterns = [
+            r'\+506\s*\d{8}',  # +506 12345678
+            r'\+506\d{8}',  # +50612345678
+            r'506\s*\d{8}',  # 506 12345678
+            r'506\d{8}',  # 50612345678
+            r'\d{8}',  # 12345678 (8 dígitos)
+            r'\d{4}-\d{4}',  # 1234-5678
+            r'\d{4}\s+\d{4}'  # 1234 5678
+        ]
+
+        for pattern in patterns:
+            matches = re.findall(pattern, text)
+            if matches:
+                # Limpiar y formatear el número encontrado
+                phone = matches[0].strip()
+                # Remover espacios y guiones para normalizar
+                phone_clean = re.sub(r'[\s-]', '', phone)
+
+                # Validar que sea un número válido (al menos 8 dígitos)
+                if len(re.sub(r'\D', '', phone_clean)) >= 8:
+                    return phone.strip()
+
+        return None
+
+    # ========== MÉTODOS HEREDADOS DEL CÓDIGO ORIGINAL ==========
 
     def _extract_basic_row_data(self, row_element, row_index: int) -> Optional[Dict]:
         """Extrae los datos básicos de una fila (sin teléfono)"""
@@ -149,7 +457,7 @@ class DataExtractor:
                 'observaciones': '',
                 'estado': '',
                 'despacho': '',
-                'telefono_cliente': ''  # 🆕 Nuevo campo
+                'telefono_cliente': ''
             }
 
             # Extraer cada campo según su columna
@@ -171,44 +479,6 @@ class DataExtractor:
         except Exception as e:
             self._log(f"Error extrayendo datos básicos de fila {row_index + 1}: {str(e)}", "ERROR")
             return None
-
-    def _extract_phone_number(self, driver, row_element, row_index: int) -> str:
-        """🆕 Extrae el número de teléfono mediante doble clic en el cliente"""
-        try:
-            self._log(f"📞 Extrayendo teléfono para fila {row_index + 1}...")
-
-            # PASO 1: Encontrar la celda del cliente
-            cliente_cell = self._find_client_cell(row_element)
-            if not cliente_cell:
-                self._log(f"⚠️ No se encontró celda de cliente en fila {row_index + 1}", "WARNING")
-                return "Sin celda cliente"
-
-            # PASO 2: Hacer scroll a la celda para asegurar visibilidad
-            self.web_driver_manager.scroll_to_element(cliente_cell)
-            time.sleep(0.5)
-
-            # PASO 3: Ejecutar doble clic usando ActionChains
-            if not self._perform_double_click(driver, cliente_cell, row_index):
-                return "Error en doble clic"
-
-            # PASO 4: Esperar y extraer el número de teléfono
-            phone_number = self._wait_and_extract_phone(driver, row_index)
-
-            # PASO 5: Regresar a la tabla principal
-            if not self._return_to_main_table(driver, row_index):
-                self._log(f"⚠️ Advertencia: no se pudo regresar a tabla principal después de fila {row_index + 1}",
-                          "WARNING")
-
-            return phone_number
-
-        except Exception as e:
-            self._log(f"❌ Error extrayendo teléfono de fila {row_index + 1}: {str(e)}", "ERROR")
-            # Intentar regresar a la tabla en caso de error
-            try:
-                self._return_to_main_table(driver, row_index)
-            except:
-                pass
-            return "Error extracción"
 
     def _find_client_cell(self, row_element):
         """Encuentra la celda del cliente en la fila"""
@@ -251,65 +521,6 @@ class DataExtractor:
         except Exception as e:
             self._log(f"❌ Error en doble clic de fila {row_index + 1}: {str(e)}", "ERROR")
             return False
-
-    def _wait_and_extract_phone(self, driver, row_index: int) -> str:
-        """Espera que aparezca el popup y extrae el número de teléfono"""
-        try:
-            self._log(f"⏳ Esperando popup de teléfono para fila {row_index + 1}...")
-
-            # Probar cada selector en orden de preferencia
-            for i, selector in enumerate(self.phone_field_selectors):
-                try:
-                    self._log(f"🔍 Probando selector {i + 1}: {selector}")
-
-                    # Esperar que aparezca el campo de teléfono
-                    wait = WebDriverWait(driver, self.phone_popup_timeout)
-                    phone_field = wait.until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                    )
-
-                    # Verificar que esté visible
-                    if phone_field.is_displayed():
-                        # Extraer el valor del teléfono
-                        phone_value = phone_field.get_attribute('value')
-                        if phone_value and phone_value.strip():
-                            cleaned_phone = self._clean_phone_number(phone_value)
-                            self._log(f"📞 Teléfono extraído de fila {row_index + 1}: {cleaned_phone}")
-                            return cleaned_phone
-                        else:
-                            self._log(f"⚠️ Campo de teléfono vacío en fila {row_index + 1}", "WARNING")
-                            return "Campo vacío"
-                    else:
-                        self._log(f"Campo encontrado pero no visible en fila {row_index + 1}", "DEBUG")
-                        continue
-
-                except TimeoutException:
-                    self._log(f"Timeout con selector {i + 1} en fila {row_index + 1}", "DEBUG")
-                    continue
-                except Exception as e:
-                    self._log(f"Error con selector {i + 1} en fila {row_index + 1}: {str(e)}", "DEBUG")
-                    continue
-
-            # Si llegamos aquí, ningún selector funcionó
-            self._log(f"❌ No se pudo encontrar campo de teléfono en fila {row_index + 1}", "WARNING")
-            return "Campo no encontrado"
-
-        except Exception as e:
-            self._log(f"❌ Error esperando popup de teléfono en fila {row_index + 1}: {str(e)}", "ERROR")
-            return "Error popup"
-
-    def _clean_phone_number(self, phone_value: str) -> str:
-        """Limpia y formatea el número de teléfono"""
-        if not phone_value:
-            return ""
-
-        # Limpiar espacios y caracteres especiales
-        cleaned = phone_value.strip()
-        cleaned = cleaned.replace('\xa0', ' ')
-        cleaned = cleaned.replace('\u00a0', ' ')
-        cleaned = ' '.join(cleaned.split())
-
-        return cleaned
 
     def _return_to_main_table(self, driver, row_index: int) -> bool:
         """Regresa a la tabla principal haciendo clic en el botón de pestaña"""
@@ -472,13 +683,13 @@ class DataExtractor:
             # Contar registros válidos
             valid_records = [record for record in extracted_data if record.get('numero_orden')]
 
-            # 🆕 Contar teléfonos extraídos exitosamente
+            # Contar teléfonos extraídos exitosamente
             phones_extracted = 0
             phone_errors = 0
             for record in valid_records:
                 phone = record.get('telefono_cliente', '')
-                if phone and phone not in ['Sin celda cliente', 'Error en doble clic', 'Campo no encontrado',
-                                           'Error extracción', 'Error popup', 'Campo vacío']:
+                if phone and phone not in ['Sin teléfono', 'Error OCR', 'Error popup', 'Error captura',
+                                           'Error análisis', 'OCR no disponible']:
                     phones_extracted += 1
                 else:
                     phone_errors += 1
@@ -510,8 +721,9 @@ class DataExtractor:
                 'distritos_count': distritos,
                 'successful_extractions': len(valid_records),
                 'errors': len(extracted_data) - len(valid_records),
-                'phones_extracted': phones_extracted,  # 🆕
-                'phone_errors': phone_errors  # 🆕
+                'phones_extracted': phones_extracted,
+                'phone_errors': phone_errors,
+                'ocr_method_used': self.ocr_method
             }
 
         except Exception as e:
@@ -542,9 +754,9 @@ class DataExtractor:
                 if not record.get('distrito'):
                     record_issues.append("Falta información de distrito")
 
-                # 🆕 Validar teléfono (advertencia, no error crítico)
+                # Validar teléfono (advertencia, no error crítico)
                 phone = record.get('telefono_cliente', '')
-                if not phone or phone in ['Sin celda cliente', 'Error en doble clic', 'Campo no encontrado']:
+                if not phone or phone in ['Sin teléfono', 'Error OCR', 'Error popup', 'OCR no disponible']:
                     record_issues.append("Sin teléfono extraído")
 
                 if record_issues:
@@ -566,45 +778,6 @@ class DataExtractor:
 
         except Exception as e:
             return False, f"Error durante validación: {str(e)}"
-
-    def extract_specific_fields(self, driver, fields: List[str]) -> tuple[bool, str, List[Dict]]:
-        """Extrae solo campos específicos solicitados (incluye teléfono si se solicita)"""
-        try:
-            self._log(f"📊 Extrayendo campos específicos: {', '.join(fields)}")
-
-            # Verificar que los campos solicitados existan
-            available_fields = set(self.column_mapping.keys())
-            available_fields.add('telefono_cliente')  # 🆕 Añadir campo de teléfono
-
-            invalid_fields = set(fields) - available_fields
-
-            if invalid_fields:
-                return False, f"Campos no válidos: {', '.join(invalid_fields)}", []
-
-            # Si se solicita teléfono, usar extracción completa
-            if 'telefono_cliente' in fields:
-                success, message, full_data = self.extract_table_data(driver)
-            else:
-                # Usar método básico sin teléfonos
-                success, message, full_data = self._extract_basic_data_only(driver)
-
-            if not success:
-                return False, message, []
-
-            # Filtrar solo los campos solicitados
-            filtered_data = []
-            for record in full_data:
-                filtered_record = {'fila_numero': record.get('fila_numero', 0)}
-                for field in fields:
-                    filtered_record[field] = record.get(field, '')
-                filtered_data.append(filtered_record)
-
-            return True, f"Extracción de campos específicos completada: {len(filtered_data)} registros", filtered_data
-
-        except Exception as e:
-            error_msg = f"Error extrayendo campos específicos: {str(e)}"
-            self._log(error_msg, "ERROR")
-            return False, error_msg, []
 
     def _extract_basic_data_only(self, driver) -> tuple[bool, str, List[Dict]]:
         """Extrae solo datos básicos sin hacer doble clic (para cuando no se necesita teléfono)"""
@@ -650,7 +823,8 @@ class DataExtractor:
                 'total_rows': len(rows),
                 'table_present': True,
                 'extraction_timestamp': time.time(),
-                'phone_extraction_available': True  # 🆕
+                'phone_extraction_available': self.ocr_method is not None,
+                'ocr_method': self.ocr_method
             }
 
             # Contar filas válidas rápidamente
@@ -665,3 +839,17 @@ class DataExtractor:
 
         except Exception as e:
             return {'error': str(e), 'table_present': False}
+
+    def is_ocr_available(self) -> bool:
+        """🆕 Verifica si algún motor OCR está disponible"""
+        return self.ocr_method is not None
+
+    def get_ocr_info(self) -> Dict:
+        """🆕 Obtiene información sobre el motor OCR disponible"""
+        return {
+            'ocr_available': self.ocr_method is not None,
+            'ocr_method': self.ocr_method,
+            'easyocr_available': OCR_EASYOCR_AVAILABLE,
+            'tesseract_available': OCR_TESSERACT_AVAILABLE,
+            'temp_directory': self.temp_dir
+        }
