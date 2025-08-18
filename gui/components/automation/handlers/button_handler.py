@@ -3,7 +3,8 @@
 """
 Gestor especializado de botones para automatización.
 Maneja el clic en botón de pestaña y botón de acción con validaciones
-de estado, visibilidad y esperas robustas.
+de estado, visibilidad y esperas robustas. Incluye funcionalidad para
+múltiples clics en el botón de búsqueda con esperas entre cada clic.
 """
 
 import time
@@ -36,6 +37,7 @@ class ButtonHandler:
         # Configuración de timeouts específicos para botones
         self.button_wait_timeout = 15
         self.action_button_wait_timeout = 15
+        self.page_load_wait = 5  # Tiempo de espera entre clics múltiples
 
     def _log(self, message, level="INFO"):
         """Log interno con fallback"""
@@ -179,6 +181,118 @@ class ButtonHandler:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
+    def handle_search_button_triple_click(self, driver):
+        """🆕 Maneja el clic TRIPLE en el botón de búsqueda con esperas entre cada clic"""
+        try:
+            self._log("🔘🔘🔘 Iniciando TRIPLE clic en botón de búsqueda...")
+            wait = WebDriverWait(driver, self.action_button_wait_timeout)
+
+            # Paso 1: Buscar el botón de búsqueda
+            self._log(f"Buscando botón de búsqueda: {self.button_xpaths['action_button']}")
+            search_button = None
+
+            try:
+                search_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, self.button_xpaths['action_button']))
+                )
+                self._log("✅ Botón de búsqueda encontrado")
+            except TimeoutException:
+                self._log("❌ No se encontró el botón de búsqueda", "WARNING")
+                return False, "Botón de búsqueda no encontrado en la página"
+
+            # Verificar que el botón esté visible y clickeable
+            try:
+                self._log("Verificando estado del botón de búsqueda...")
+                self.web_driver_manager.scroll_to_element(search_button)
+                time.sleep(1)
+
+                if not search_button.is_enabled():
+                    self._log("⚠️ El botón de búsqueda está deshabilitado", "WARNING")
+                    return False, "El botón de búsqueda está deshabilitado"
+
+                if not search_button.is_displayed():
+                    self._log("⚠️ El botón de búsqueda no está visible", "WARNING")
+                    return False, "El botón de búsqueda no está visible"
+
+                self._log("✅ Botón de búsqueda está listo para triple clic")
+
+            except Exception as e:
+                self._log(f"Error verificando estado del botón de búsqueda: {e}", "WARNING")
+
+            # Ejecutar los 3 clics con esperas
+            click_results = []
+
+            for click_number in range(1, 4):
+                try:
+                    self._log(f"🎯 Ejecutando clic {click_number}/3 en botón de búsqueda...")
+
+                    # Verificar que el botón siga siendo clickeable
+                    search_button = wait.until(
+                        EC.element_to_be_clickable((By.XPATH, self.button_xpaths['action_button']))
+                    )
+
+                    # Hacer clic
+                    search_button.click()
+                    self._log(f"✅ Clic {click_number}/3 ejecutado exitosamente")
+
+                    click_results.append(f"Clic {click_number}: Exitoso")
+
+                    # Esperar carga de página (excepto después del último clic)
+                    if click_number < 3:
+                        self._log(f"⏳ Esperando {self.page_load_wait} segundos para carga de página...")
+                        time.sleep(self.page_load_wait)
+
+                        # Esperar que la página se estabilice
+                        self._wait_for_page_stabilization(driver)
+                        self._log(f"✅ Página estabilizada después del clic {click_number}")
+                    else:
+                        # Espera final más larga para el último clic
+                        self._log("⏳ Esperando carga final después del último clic...")
+                        time.sleep(self.page_load_wait * 2)
+                        self._wait_for_page_stabilization(driver)
+                        self._log("✅ Carga final completada")
+
+                except Exception as e:
+                    error_msg = f"Error en clic {click_number}/3: {str(e)}"
+                    self._log(error_msg, "ERROR")
+                    click_results.append(f"Clic {click_number}: Error - {str(e)}")
+                    return False, f"Error en clic {click_number}: {str(e)}"
+
+            # Verificar resultado final
+            try:
+                current_url = driver.current_url
+                self._log(f"📍 URL después del triple clic: {current_url}")
+
+                success_message = f"Triple clic completado exitosamente. Resultados: {'; '.join(click_results)}"
+                self._log(f"🎉 {success_message}")
+
+                return True, success_message
+
+            except Exception as e:
+                self._log(f"Error verificando resultado final: {e}", "WARNING")
+                return True, f"Triple clic completado (verificación parcial). Resultados: {'; '.join(click_results)}"
+
+        except Exception as e:
+            error_msg = f"Error durante triple clic en botón de búsqueda: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
+    def _wait_for_page_stabilization(self, driver):
+        """Espera que la página se estabilice después de un clic"""
+        try:
+            # Esperar que el estado del documento sea complete
+            WebDriverWait(driver, 10).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+
+            # Espera adicional para elementos dinámicos
+            time.sleep(2)
+
+            self._log("📄 Página estabilizada correctamente")
+
+        except Exception as e:
+            self._log(f"⚠️ Advertencia en estabilización de página: {e}", "WARNING")
+
     def validate_buttons_present(self, driver):
         """Verifica si ambos botones están presentes en la página"""
         try:
@@ -290,6 +404,8 @@ class ButtonHandler:
                 return self.handle_tab_button_click(driver)
             elif button_name == 'action_button':
                 return self.handle_action_button_click(driver)
+            elif button_name == 'search_button_triple':
+                return self.handle_search_button_triple_click(driver)
             else:
                 return False, f"Botón desconocido: {button_name}"
 
@@ -320,6 +436,31 @@ class ButtonHandler:
 
         except Exception as e:
             error_msg = f"Error procesando botones: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
+    def process_all_buttons_with_triple_search(self, driver):
+        """🆕 Procesa botones con triple clic en búsqueda"""
+        try:
+            self._log("🔘 Iniciando procesamiento con triple clic en búsqueda...")
+
+            # Botón de pestaña primero
+            tab_success, tab_message = self.handle_tab_button_click(driver)
+            if not tab_success:
+                return False, f"Error en botón de pestaña: {tab_message}"
+
+            # Esperar un poco entre botones
+            time.sleep(2)
+
+            # TRIPLE CLIC en botón de búsqueda
+            search_success, search_message = self.handle_search_button_triple_click(driver)
+            if not search_success:
+                return False, f"Error en triple clic de búsqueda: {search_message}"
+
+            return True, f"Procesamiento con triple clic completado: {search_message}"
+
+        except Exception as e:
+            error_msg = f"Error procesando botones con triple clic: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg
 

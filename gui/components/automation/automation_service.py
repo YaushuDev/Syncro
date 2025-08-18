@@ -3,7 +3,8 @@
 """
 Servicio principal de automatización refactorizado con arquitectura modular.
 Interfaz pública principal que coordina todos los handlers especializados
-para login automático, dropdowns, configuración de fechas y botones.
+para login automático, dropdowns, configuración de fechas, botones,
+extracción de datos y exportación a Excel.
 Mantiene compatibilidad completa con la API original.
 """
 
@@ -30,13 +31,17 @@ from .credentials_manager import CredentialsManager
 
 
 class AutomationService:
-    """Servicio principal de automatización con arquitectura modular refactorizada"""
+    """Servicio principal de automatización con arquitectura modular refactorizada y extracción de datos"""
 
     def __init__(self, logger=None):
         self.is_running = False
         self.target_url = "https://fieldservice.cabletica.com/dispatchFS/"
         self._lock = threading.Lock()
         self.logger = logger
+
+        # Estado de última extracción
+        self.last_extraction_file = None
+        self.last_extraction_data = None
 
         # Inicializar gestores especializados
         self._initialize_handlers()
@@ -68,13 +73,13 @@ class AutomationService:
                 logger=self._log
             )
 
-            # Handler de botones
+            # Handler de botones (actualizado con triple clic)
             self.button_handler = ButtonHandler(
                 web_driver_manager=self.web_driver_manager,
                 logger=self._log
             )
 
-            # Orchestrador principal
+            # Orchestrador principal (actualizado con extracción de datos)
             self.automation_orchestrator = AutomationOrchestrator(
                 web_driver_manager=self.web_driver_manager,
                 login_handler=self.login_handler,
@@ -111,7 +116,7 @@ class AutomationService:
         return self.target_url
 
     def start_automation(self, username=None, password=None, date_config=None):
-        """Inicia el proceso de automatización completo con arquitectura modular"""
+        """🔄 Inicia el proceso de automatización completo con extracción de datos"""
         try:
             with self._lock:
                 if self.is_running:
@@ -122,7 +127,7 @@ class AutomationService:
                     self._log("Selenium no disponible, usando método básico")
                     webbrowser.open(self.target_url)
                     self.is_running = True
-                    return True, "Automatización iniciada (modo básico - sin login automático ni configuración de fechas)"
+                    return True, "Automatización iniciada (modo básico - sin funcionalidades avanzadas)"
 
                 # Verificar credenciales
                 if not username or not password:
@@ -143,17 +148,24 @@ class AutomationService:
                 if not date_config:
                     date_config = {'skip_dates': True}
 
-                self._log("🚀 Iniciando automatización completa con arquitectura modular...")
+                self._log("🚀 Iniciando automatización completa con extracción de datos...")
                 self._log_automation_config(date_config)
 
-                # Ejecutar automatización usando el orchestrador
+                # Ejecutar automatización usando el orchestrador (INCLUYE EXTRACCIÓN DE DATOS)
                 success, message = self.automation_orchestrator.execute_complete_automation(
                     username, password, date_config
                 )
 
                 if success:
                     self.is_running = True
-                    self._log("✅ Automatización completada exitosamente")
+
+                    # Extraer información del archivo Excel si se generó
+                    excel_file = self._extract_excel_file_from_message(message)
+                    if excel_file:
+                        self.last_extraction_file = excel_file
+                        self._log(f"📄 Archivo Excel generado: {excel_file}")
+
+                    self._log("✅ Automatización con extracción completada exitosamente")
                     return True, message
                 else:
                     self._log(f"❌ Automatización falló: {message}", "ERROR")
@@ -164,6 +176,20 @@ class AutomationService:
             self._log(f"❌ Excepción en start_automation: {str(e)}", "ERROR")
             self._cleanup_on_failure()
             return False, f"Error al iniciar automatización: {str(e)}"
+
+    def _extract_excel_file_from_message(self, message):
+        """Extrae la ruta del archivo Excel del mensaje de éxito"""
+        try:
+            # Buscar patrón "Archivo Excel: ruta_del_archivo"
+            if "Archivo Excel:" in message:
+                parts = message.split("Archivo Excel:")
+                if len(parts) > 1:
+                    # Extraer la ruta hasta el siguiente espacio o final
+                    excel_path = parts[1].strip().split()[0]
+                    return excel_path
+            return None
+        except Exception:
+            return None
 
     def pause_automation(self):
         """Pausa el proceso de automatización"""
@@ -330,18 +356,105 @@ class AutomationService:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
+    # 🆕 NUEVOS MÉTODOS PARA EXTRACCIÓN DE DATOS
+
+    def execute_triple_click_search(self):
+        """🆕 Ejecuta el triple clic en el botón de búsqueda (para uso manual)"""
+        try:
+            if not self.is_running or not self.web_driver_manager.driver:
+                return False, "No hay automatización activa"
+
+            return self.button_handler.handle_search_button_triple_click(self.web_driver_manager.driver)
+        except Exception as e:
+            error_msg = f"Error en triple clic manual: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
+    def extract_data_only(self):
+        """🆕 Ejecuta solo la extracción de datos (asume que el flujo ya se ejecutó)"""
+        try:
+            if not self.is_running or not self.web_driver_manager.driver:
+                return False, "No hay automatización activa", None
+
+            success, message, excel_file = self.automation_orchestrator.extract_data_only(
+                self.web_driver_manager.driver)
+
+            if success and excel_file:
+                self.last_extraction_file = excel_file
+                self._log(f"📄 Extracción independiente completada: {excel_file}")
+
+            return success, message, excel_file
+
+        except Exception as e:
+            error_msg = f"Error en extracción independiente: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg, None
+
+    def test_data_extraction(self):
+        """🆕 Prueba la funcionalidad de extracción de datos"""
+        try:
+            if not self.is_running or not self.web_driver_manager.driver:
+                return False, "No hay automatización activa"
+
+            return self.automation_orchestrator.test_data_extraction(self.web_driver_manager.driver)
+
+        except Exception as e:
+            error_msg = f"Error probando extracción: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg
+
+    def get_last_extraction_file(self):
+        """🆕 Obtiene la ruta del último archivo Excel generado"""
+        return self.last_extraction_file
+
+    def get_export_directory(self):
+        """🆕 Obtiene el directorio donde se guardan los archivos Excel"""
+        try:
+            return self.automation_orchestrator.get_export_directory()
+        except Exception as e:
+            self._log(f"Error obteniendo directorio de exportación: {e}", "WARNING")
+            return None
+
+    def is_data_extraction_available(self):
+        """🆕 Verifica si la funcionalidad de extracción de datos está disponible"""
+        try:
+            if not hasattr(self.automation_orchestrator, 'data_extractor'):
+                return False
+
+            if not hasattr(self.automation_orchestrator, 'excel_exporter'):
+                return False
+
+            # Verificar dependencias
+            if self.automation_orchestrator.data_extractor is None:
+                return False
+
+            if self.automation_orchestrator.excel_exporter is None:
+                return False
+
+            # Verificar que openpyxl esté disponible
+            return self.automation_orchestrator.excel_exporter.is_available()
+
+        except Exception as e:
+            self._log(f"Error verificando disponibilidad de extracción: {e}", "WARNING")
+            return False
+
     def get_automation_status_detailed(self):
-        """Obtiene estado detallado de todos los componentes"""
+        """Obtiene estado detallado de todos los componentes incluyendo extracción"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return {
                     'automation_running': False,
                     'driver_active': False,
-                    'components': {}
+                    'components': {},
+                    'data_extraction_available': self.is_data_extraction_available(),
+                    'last_extraction_file': self.last_extraction_file
                 }
 
             status = self.automation_orchestrator.get_automation_status(self.web_driver_manager.driver)
             status['automation_running'] = self.is_running
+            status['data_extraction_available'] = self.is_data_extraction_available()
+            status['last_extraction_file'] = self.last_extraction_file
+            status['export_directory'] = self.get_export_directory()
 
             return status
 
@@ -350,7 +463,9 @@ class AutomationService:
             return {
                 'automation_running': self.is_running,
                 'driver_active': False,
-                'error': str(e)
+                'error': str(e),
+                'data_extraction_available': False,
+                'last_extraction_file': self.last_extraction_file
             }
 
     def execute_partial_automation(self, start_step, end_step, **kwargs):
@@ -379,6 +494,8 @@ class AutomationService:
         try:
             self._log("📋 Configuración de automatización:")
             self._log(f"  🌐 URL objetivo: {self.target_url}")
+            self._log(
+                f"  📊 Extracción de datos: {'✅ Habilitada' if self.is_data_extraction_available() else '❌ No disponible'}")
 
             if date_config and not date_config.get('skip_dates', True):
                 date_from = date_config.get('date_from', 'No especificada')
@@ -387,13 +504,17 @@ class AutomationService:
             else:
                 self._log("  📅 Fechas: OMITIR (mantener valores actuales)")
 
+            export_dir = self.get_export_directory()
+            if export_dir:
+                self._log(f"  📁 Directorio de exportación: {export_dir}")
+
         except Exception as e:
             self._log(f"Error registrando configuración: {e}", "DEBUG")
 
     def get_handlers_status(self):
-        """Obtiene estado de todos los handlers"""
+        """Obtiene estado de todos los handlers incluyendo nuevos"""
         try:
-            return {
+            base_status = {
                 'web_driver_manager': {
                     'available': self.web_driver_manager is not None,
                     'selenium_available': self.web_driver_manager.is_selenium_available(),
@@ -409,16 +530,34 @@ class AutomationService:
                     'available': self.date_handler is not None
                 },
                 'button_handler': {
-                    'available': self.button_handler is not None
+                    'available': self.button_handler is not None,
+                    'triple_click_support': True  # Nueva funcionalidad
                 },
                 'automation_orchestrator': {
-                    'available': self.automation_orchestrator is not None
+                    'available': self.automation_orchestrator is not None,
+                    'data_extraction_support': True  # Nueva funcionalidad
                 },
                 'credentials_manager': {
                     'available': self.credentials_manager is not None,
                     'crypto_available': self.credentials_manager.is_crypto_available()
                 }
             }
+
+            # 🆕 Estado de nuevos handlers
+            try:
+                base_status['data_extraction'] = {
+                    'available': self.is_data_extraction_available(),
+                    'last_file': self.last_extraction_file,
+                    'export_directory': self.get_export_directory()
+                }
+            except Exception as e:
+                base_status['data_extraction'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+
+            return base_status
+
         except Exception as e:
             self._log(f"Error obteniendo estado de handlers: {e}", "WARNING")
-            return {}
+            return {'error': str(e)}
