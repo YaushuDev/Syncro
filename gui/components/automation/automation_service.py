@@ -1,11 +1,10 @@
 # automation_service.py
 # Ubicación: /syncro_bot/gui/components/automation/automation_service.py
 """
-Servicio principal de automatización refactorizado con arquitectura modular.
-Interfaz pública principal que coordina todos los handlers especializados
-para login automático, dropdowns, configuración de fechas, botones,
-extracción de datos y exportación a Excel.
-Mantiene compatibilidad completa con la API original.
+Servicio principal de automatización con funcionalidad completa de extracción
+de teléfonos mediante doble clic. Interfaz pública que coordina todos los
+handlers para login, dropdowns, fechas, triple clic, extracción con teléfonos
+y generación de reportes Excel completos.
 """
 
 import threading
@@ -31,7 +30,7 @@ from .credentials_manager import CredentialsManager
 
 
 class AutomationService:
-    """Servicio principal de automatización con arquitectura modular refactorizada y extracción de datos"""
+    """Servicio principal con funcionalidad completa de extracción de teléfonos"""
 
     def __init__(self, logger=None):
         self.is_running = False
@@ -42,6 +41,7 @@ class AutomationService:
         # Estado de última extracción
         self.last_extraction_file = None
         self.last_extraction_data = None
+        self.last_phone_count = 0  # 🆕 Contador de teléfonos extraídos
 
         # Inicializar gestores especializados
         self._initialize_handlers()
@@ -50,7 +50,7 @@ class AutomationService:
         self.credentials_manager = CredentialsManager()
 
     def _initialize_handlers(self):
-        """Inicializa todos los handlers especializados"""
+        """Inicializa todos los handlers especializados con soporte para teléfonos"""
         try:
             # Handler del navegador
             self.web_driver_manager = WebDriverManager(logger=self._log)
@@ -73,13 +73,13 @@ class AutomationService:
                 logger=self._log
             )
 
-            # Handler de botones (actualizado con triple clic)
+            # Handler de botones (con triple clic)
             self.button_handler = ButtonHandler(
                 web_driver_manager=self.web_driver_manager,
                 logger=self._log
             )
 
-            # Orchestrador principal (actualizado con extracción de datos)
+            # 🆕 Orchestrador principal con funcionalidad completa de teléfonos
             self.automation_orchestrator = AutomationOrchestrator(
                 web_driver_manager=self.web_driver_manager,
                 login_handler=self.login_handler,
@@ -89,7 +89,7 @@ class AutomationService:
                 logger=self._log
             )
 
-            self._log("🔧 Handlers de automatización inicializados correctamente")
+            self._log("🔧 Handlers de automatización con teléfonos inicializados correctamente")
 
         except Exception as e:
             self._log(f"❌ Error inicializando handlers: {str(e)}", "ERROR")
@@ -116,7 +116,7 @@ class AutomationService:
         return self.target_url
 
     def start_automation(self, username=None, password=None, date_config=None):
-        """🔄 Inicia el proceso de automatización completo con extracción de datos"""
+        """🔄 Inicia el proceso de automatización completo con extracción de teléfonos"""
         try:
             with self._lock:
                 if self.is_running:
@@ -148,10 +148,10 @@ class AutomationService:
                 if not date_config:
                     date_config = {'skip_dates': True}
 
-                self._log("🚀 Iniciando automatización completa con extracción de datos...")
+                self._log("🚀 Iniciando automatización completa con extracción de teléfonos...")
                 self._log_automation_config(date_config)
 
-                # Ejecutar automatización usando el orchestrador (INCLUYE EXTRACCIÓN DE DATOS)
+                # 🆕 Ejecutar automatización completa con teléfonos
                 success, message = self.automation_orchestrator.execute_complete_automation(
                     username, password, date_config
                 )
@@ -159,13 +159,15 @@ class AutomationService:
                 if success:
                     self.is_running = True
 
-                    # Extraer información del archivo Excel si se generó
+                    # 🆕 Extraer información del archivo Excel y contar teléfonos
                     excel_file = self._extract_excel_file_from_message(message)
                     if excel_file:
                         self.last_extraction_file = excel_file
-                        self._log(f"📄 Archivo Excel generado: {excel_file}")
+                        self.last_phone_count = self._extract_phone_count_from_message(message)
+                        self._log(f"📄 Archivo Excel con teléfonos generado: {excel_file}")
+                        self._log(f"📞 Teléfonos extraídos: {self.last_phone_count}")
 
-                    self._log("✅ Automatización con extracción completada exitosamente")
+                    self._log("✅ Automatización con extracción de teléfonos completada exitosamente")
                     return True, message
                 else:
                     self._log(f"❌ Automatización falló: {message}", "ERROR")
@@ -190,6 +192,27 @@ class AutomationService:
             return None
         except Exception:
             return None
+
+    def _extract_phone_count_from_message(self, message):
+        """🆕 Extrae el número de teléfonos del mensaje de éxito"""
+        try:
+            # Buscar patrones como "5 teléfonos" o "con 3 teléfonos"
+            import re
+            phone_patterns = [
+                r'(\d+)\s+teléfonos',
+                r'con\s+(\d+)\s+teléfono',
+                r'extraídos:\s*(\d+)',
+                r'phones_extracted.*?(\d+)'
+            ]
+
+            for pattern in phone_patterns:
+                match = re.search(pattern, message, re.IGNORECASE)
+                if match:
+                    return int(match.group(1))
+
+            return 0
+        except Exception:
+            return 0
 
     def pause_automation(self):
         """Pausa el proceso de automatización"""
@@ -356,10 +379,10 @@ class AutomationService:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    # 🆕 NUEVOS MÉTODOS PARA EXTRACCIÓN DE DATOS
+    # 🆕 MÉTODOS PARA EXTRACCIÓN COMPLETA CON TELÉFONOS
 
     def execute_triple_click_search(self):
-        """🆕 Ejecuta el triple clic en el botón de búsqueda (para uso manual)"""
+        """Ejecuta el triple clic en el botón de búsqueda (para uso manual)"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa"
@@ -370,8 +393,8 @@ class AutomationService:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    def extract_data_only(self):
-        """🆕 Ejecuta solo la extracción de datos (asume que el flujo ya se ejecutó)"""
+    def extract_data_with_phones(self):
+        """🆕 Ejecuta extracción completa con teléfonos (asume que ya se ejecutó el flujo)"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa", None
@@ -381,17 +404,40 @@ class AutomationService:
 
             if success and excel_file:
                 self.last_extraction_file = excel_file
-                self._log(f"📄 Extracción independiente completada: {excel_file}")
+                self.last_phone_count = self._extract_phone_count_from_message(message)
+                self._log(f"📄 Extracción completa con teléfonos completada: {excel_file}")
+                self._log(f"📞 Teléfonos extraídos: {self.last_phone_count}")
 
             return success, message, excel_file
 
         except Exception as e:
-            error_msg = f"Error en extracción independiente: {str(e)}"
+            error_msg = f"Error en extracción completa: {str(e)}"
+            self._log(error_msg, "ERROR")
+            return False, error_msg, None
+
+    def extract_basic_data_only(self):
+        """🆕 Extrae solo datos básicos sin teléfonos (más rápido)"""
+        try:
+            if not self.is_running or not self.web_driver_manager.driver:
+                return False, "No hay automatización activa", None
+
+            success, message, excel_file = self.automation_orchestrator.extract_basic_data_only(
+                self.web_driver_manager.driver)
+
+            if success and excel_file:
+                self.last_extraction_file = excel_file
+                self.last_phone_count = 0  # No se extraen teléfonos en modo básico
+                self._log(f"📄 Extracción básica completada: {excel_file}")
+
+            return success, message, excel_file
+
+        except Exception as e:
+            error_msg = f"Error en extracción básica: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg, None
 
     def test_data_extraction(self):
-        """🆕 Prueba la funcionalidad de extracción de datos"""
+        """Prueba la funcionalidad de extracción de datos con teléfonos"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa"
@@ -404,11 +450,15 @@ class AutomationService:
             return False, error_msg
 
     def get_last_extraction_file(self):
-        """🆕 Obtiene la ruta del último archivo Excel generado"""
+        """Obtiene la ruta del último archivo Excel generado"""
         return self.last_extraction_file
 
+    def get_last_phone_count(self):
+        """🆕 Obtiene el número de teléfonos extraídos en la última ejecución"""
+        return self.last_phone_count
+
     def get_export_directory(self):
-        """🆕 Obtiene el directorio donde se guardan los archivos Excel"""
+        """Obtiene el directorio donde se guardan los archivos Excel"""
         try:
             return self.automation_orchestrator.get_export_directory()
         except Exception as e:
@@ -416,7 +466,7 @@ class AutomationService:
             return None
 
     def is_data_extraction_available(self):
-        """🆕 Verifica si la funcionalidad de extracción de datos está disponible"""
+        """Verifica si la funcionalidad de extracción de datos está disponible"""
         try:
             if not hasattr(self.automation_orchestrator, 'data_extractor'):
                 return False
@@ -438,8 +488,24 @@ class AutomationService:
             self._log(f"Error verificando disponibilidad de extracción: {e}", "WARNING")
             return False
 
+    def is_phone_extraction_available(self):
+        """🆕 Verifica si la funcionalidad de extracción de teléfonos está disponible"""
+        try:
+            if not self.is_data_extraction_available():
+                return False
+
+            # Verificar que el data_extractor tenga soporte para teléfonos
+            if hasattr(self.automation_orchestrator.data_extractor, 'phone_field_selectors'):
+                return True
+
+            return False
+
+        except Exception as e:
+            self._log(f"Error verificando disponibilidad de teléfonos: {e}", "WARNING")
+            return False
+
     def get_automation_status_detailed(self):
-        """Obtiene estado detallado de todos los componentes incluyendo extracción"""
+        """Obtiene estado detallado incluyendo información de teléfonos"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return {
@@ -447,13 +513,17 @@ class AutomationService:
                     'driver_active': False,
                     'components': {},
                     'data_extraction_available': self.is_data_extraction_available(),
-                    'last_extraction_file': self.last_extraction_file
+                    'phone_extraction_available': self.is_phone_extraction_available(),  # 🆕
+                    'last_extraction_file': self.last_extraction_file,
+                    'last_phone_count': self.last_phone_count  # 🆕
                 }
 
             status = self.automation_orchestrator.get_automation_status(self.web_driver_manager.driver)
             status['automation_running'] = self.is_running
             status['data_extraction_available'] = self.is_data_extraction_available()
+            status['phone_extraction_available'] = self.is_phone_extraction_available()  # 🆕
             status['last_extraction_file'] = self.last_extraction_file
+            status['last_phone_count'] = self.last_phone_count  # 🆕
             status['export_directory'] = self.get_export_directory()
 
             return status
@@ -465,7 +535,9 @@ class AutomationService:
                 'driver_active': False,
                 'error': str(e),
                 'data_extraction_available': False,
-                'last_extraction_file': self.last_extraction_file
+                'phone_extraction_available': False,
+                'last_extraction_file': self.last_extraction_file,
+                'last_phone_count': self.last_phone_count
             }
 
     def execute_partial_automation(self, start_step, end_step, **kwargs):
@@ -490,12 +562,14 @@ class AutomationService:
             self._log(f"Error en limpieza después de fallo: {e}", "WARNING")
 
     def _log_automation_config(self, date_config):
-        """Registra la configuración de automatización"""
+        """Registra la configuración de automatización incluyendo teléfonos"""
         try:
             self._log("📋 Configuración de automatización:")
             self._log(f"  🌐 URL objetivo: {self.target_url}")
             self._log(
                 f"  📊 Extracción de datos: {'✅ Habilitada' if self.is_data_extraction_available() else '❌ No disponible'}")
+            self._log(
+                f"  📞 Extracción de teléfonos: {'✅ Habilitada' if self.is_phone_extraction_available() else '❌ No disponible'}")
 
             if date_config and not date_config.get('skip_dates', True):
                 date_from = date_config.get('date_from', 'No especificada')
@@ -512,7 +586,7 @@ class AutomationService:
             self._log(f"Error registrando configuración: {e}", "DEBUG")
 
     def get_handlers_status(self):
-        """Obtiene estado de todos los handlers incluyendo nuevos"""
+        """Obtiene estado de todos los handlers incluyendo funcionalidad de teléfonos"""
         try:
             base_status = {
                 'web_driver_manager': {
@@ -531,11 +605,12 @@ class AutomationService:
                 },
                 'button_handler': {
                     'available': self.button_handler is not None,
-                    'triple_click_support': True  # Nueva funcionalidad
+                    'triple_click_support': True
                 },
                 'automation_orchestrator': {
                     'available': self.automation_orchestrator is not None,
-                    'data_extraction_support': True  # Nueva funcionalidad
+                    'data_extraction_support': True,
+                    'phone_extraction_support': True  # 🆕
                 },
                 'credentials_manager': {
                     'available': self.credentials_manager is not None,
@@ -543,16 +618,19 @@ class AutomationService:
                 }
             }
 
-            # 🆕 Estado de nuevos handlers
+            # Estado de extracción con teléfonos
             try:
                 base_status['data_extraction'] = {
                     'available': self.is_data_extraction_available(),
+                    'phone_support': self.is_phone_extraction_available(),  # 🆕
                     'last_file': self.last_extraction_file,
+                    'last_phone_count': self.last_phone_count,  # 🆕
                     'export_directory': self.get_export_directory()
                 }
             except Exception as e:
                 base_status['data_extraction'] = {
                     'available': False,
+                    'phone_support': False,
                     'error': str(e)
                 }
 
@@ -561,3 +639,39 @@ class AutomationService:
         except Exception as e:
             self._log(f"Error obteniendo estado de handlers: {e}", "WARNING")
             return {'error': str(e)}
+
+    # 🆕 MÉTODOS PÚBLICOS ADICIONALES PARA FUNCIONALIDAD DE TELÉFONOS
+
+    def get_phone_extraction_summary(self):
+        """🆕 Obtiene resumen de la última extracción de teléfonos"""
+        try:
+            return {
+                'last_extraction_file': self.last_extraction_file,
+                'last_phone_count': self.last_phone_count,
+                'phone_support_available': self.is_phone_extraction_available(),
+                'extraction_timestamp': time.time()
+            }
+        except Exception as e:
+            self._log(f"Error obteniendo resumen de teléfonos: {e}", "WARNING")
+            return {
+                'error': str(e),
+                'phone_support_available': False
+            }
+
+    def force_phone_extraction_test(self):
+        """🆕 Fuerza una prueba de la funcionalidad de teléfonos"""
+        try:
+            if not self.is_running or not self.web_driver_manager.driver:
+                return False, "No hay automatización activa para probar"
+
+            # Probar que los selectores de teléfono funcionen
+            if hasattr(self.automation_orchestrator, 'data_extractor'):
+                data_extractor = self.automation_orchestrator.data_extractor
+                if hasattr(data_extractor, 'phone_field_selectors'):
+                    selector_count = len(data_extractor.phone_field_selectors)
+                    return True, f"Funcionalidad de teléfonos lista: {selector_count} selectores disponibles"
+
+            return False, "Funcionalidad de teléfonos no disponible"
+
+        except Exception as e:
+            return False, f"Error probando funcionalidad de teléfonos: {str(e)}"
