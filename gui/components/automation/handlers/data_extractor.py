@@ -63,6 +63,7 @@ class DataExtractor:
             'distrito': 'gridcolumn-1122',  # Distrito
             'barrio': 'gridcolumn-1123',  # Barrio
             'canton': 'gridcolumn-1124',  # Cantón
+            'fecha_creacion': 'gridcolumn-1132',  # 🔧 Fecha creación - ID CORREGIDO
             'observaciones': 'gridcolumn-1126',  # Observaciones
             'estado': 'gridcolumn-1112',  # Estado
             'despacho': 'gridcolumn-1116'  # Despacho
@@ -454,6 +455,7 @@ class DataExtractor:
                 'distrito': '',
                 'barrio': '',
                 'canton': '',
+                'fecha_creacion': '',  # Nuevo campo
                 'observaciones': '',
                 'estado': '',
                 'despacho': '',

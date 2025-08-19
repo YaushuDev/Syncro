@@ -2,8 +2,8 @@
 # Ubicación: /syncro_bot/gui/components/automation/handlers/excel_exporter.py
 """
 Exportador especializado de datos a archivos Excel con soporte para números
-de teléfono. Maneja la creación de archivos Excel con formato profesional
-incluyendo la nueva columna de teléfono cliente extraída mediante doble clic.
+de teléfono y fecha de creación. Maneja la creación de archivos Excel con
+formato profesional incluyendo todas las columnas extraídas mediante OCR.
 """
 
 import os
@@ -25,34 +25,36 @@ except ImportError:
 
 
 class ExcelExporter:
-    """Exportador especializado de datos a archivos Excel con soporte para teléfonos"""
+    """Exportador especializado de datos a archivos Excel con soporte para teléfonos y fecha creación"""
 
     def __init__(self, logger=None):
         self.logger = logger
 
         # Configuración de archivos
-        self.default_filename = "datos_extraidos_syncro_bot_con_telefonos"
+        self.default_filename = "datos_extraidos_syncro_bot"
         self.output_directory = "reportes_excel"
 
-        # 🆕 Mapeo de nombres de columnas actualizado con teléfono
+        # 🆕 Mapeo de nombres de columnas actualizado con fecha creación
         self.column_headers = {
             'fila_numero': 'Fila #',
             'numero_orden': 'Número de Orden',
             'cliente': 'Cliente',
-            'telefono_cliente': 'Teléfono Cliente',  # 🆕 Nueva columna
+            'telefono_cliente': 'Teléfono Cliente',
             'tecnico': 'Técnico',
             'distrito': 'Distrito',
             'barrio': 'Barrio',
             'canton': 'Cantón',
+            'fecha_creacion': 'Fecha Creación',  # 🆕 Nueva columna
             'observaciones': 'Observaciones',
             'estado': 'Estado',
             'despacho': 'Despacho'
         }
 
-        # 🆕 Orden preferido de columnas actualizado
+        # 🆕 Orden preferido de columnas actualizado con fecha creación
         self.column_order = [
-            'fila_numero', 'numero_orden', 'cliente', 'telefono_cliente',  # Teléfono después de cliente
-            'tecnico', 'distrito', 'barrio', 'canton', 'estado', 'despacho', 'observaciones'
+            'fila_numero', 'numero_orden', 'cliente', 'telefono_cliente',
+            'tecnico', 'distrito', 'barrio', 'canton', 'fecha_creacion',  # Fecha después de ubicación
+            'estado', 'despacho', 'observaciones'
         ]
 
     def _log(self, message, level="INFO"):
@@ -67,7 +69,7 @@ class ExcelExporter:
         return OPENPYXL_AVAILABLE
 
     def export_to_excel(self, data: List[Dict], filename: Optional[str] = None) -> tuple[bool, str, str]:
-        """Exporta datos a archivo Excel con formato profesional incluyendo teléfonos"""
+        """Exporta datos a archivo Excel con formato profesional incluyendo teléfonos y fecha creación"""
         try:
             if not OPENPYXL_AVAILABLE:
                 return False, "openpyxl no está disponible", ""
@@ -75,18 +77,23 @@ class ExcelExporter:
             if not data:
                 return False, "No hay datos para exportar", ""
 
-            # 🔍 DEBUG: Verificar datos recibidos y teléfonos
+            # 🔍 DEBUG: Verificar datos recibidos
             self._log(f"🔍 DEBUG: Recibidos {len(data)} registros para exportar")
 
-            # Contar registros con teléfono
+            # Contar registros con teléfono y fecha
             phones_count = 0
+            dates_count = 0
             for record in data:
                 phone = record.get('telefono_cliente', '')
-                if phone and phone not in ['Sin celda cliente', 'Error en doble clic', 'Campo no encontrado',
-                                           'Error extracción', 'Error popup', 'Campo vacío']:
+                if phone and phone not in ['Sin teléfono', 'Error OCR', 'Error popup', 'OCR no disponible']:
                     phones_count += 1
 
+                fecha = record.get('fecha_creacion', '')
+                if fecha and fecha.strip():
+                    dates_count += 1
+
             self._log(f"📞 {phones_count} registros con teléfono de {len(data)} totales")
+            self._log(f"📅 {dates_count} registros con fecha creación de {len(data)} totales")
 
             # Preparar directorio de salida
             if not os.path.exists(self.output_directory):
@@ -103,12 +110,12 @@ class ExcelExporter:
 
             filepath = os.path.join(self.output_directory, filename)
 
-            self._log(f"📊 Iniciando exportación a Excel con teléfonos: {filepath}")
+            self._log(f"📊 Iniciando exportación a Excel uniforme: {filepath}")
 
             # Crear workbook y worksheet
             workbook = openpyxl.Workbook()
             worksheet = workbook.active
-            worksheet.title = "Datos Extraídos con Teléfonos"
+            worksheet.title = "Datos Extraídos"
 
             # Configurar datos para exportación
             success = self._setup_worksheet(worksheet, data)
@@ -122,7 +129,7 @@ class ExcelExporter:
             # Verificar que el archivo se creó correctamente
             if os.path.exists(filepath):
                 file_size = os.path.getsize(filepath)
-                success_message = f"Excel creado exitosamente: {len(data)} registros exportados ({phones_count} con teléfono, {file_size} bytes)"
+                success_message = f"Excel creado: {len(data)} registros exportados ({phones_count} con teléfono, {dates_count} con fecha, {file_size} bytes)"
                 return True, success_message, filepath
             else:
                 return False, "Archivo no se creó correctamente", ""
@@ -133,7 +140,7 @@ class ExcelExporter:
             return False, error_msg, ""
 
     def _setup_worksheet(self, worksheet, data: List[Dict]) -> bool:
-        """Configura el worksheet con datos y formato incluyendo teléfonos"""
+        """Configura el worksheet con datos y formato incluyendo teléfonos y fecha creación"""
         try:
             # 🔍 DEBUG: Verificar datos en setup
             self._log(f"🔍 DEBUG: Configurando worksheet con {len(data)} registros")
@@ -163,7 +170,7 @@ class ExcelExporter:
             if rows_inserted > 0:
                 self._create_table(worksheet, rows_inserted, columns_to_include)
 
-            # Ajustar ancho de columnas (incluyendo teléfono)
+            # Ajustar ancho de columnas (incluyendo teléfono y fecha)
             self._adjust_column_widths(worksheet, columns_to_include)
 
             return True
@@ -173,7 +180,7 @@ class ExcelExporter:
             return False
 
     def _determine_columns_improved(self, data: List[Dict]) -> List[str]:
-        """🔧 Determina qué columnas incluir dando prioridad al teléfono si está disponible"""
+        """🔧 Determina qué columnas incluir dando prioridad al teléfono y fecha creación"""
         if not data:
             self._log("⚠️ No hay datos para determinar columnas", "WARNING")
             return []
@@ -201,8 +208,7 @@ class ExcelExporter:
             valid_phones = 0
             for record in data:
                 phone = record.get('telefono_cliente', '')
-                if phone and phone not in ['Sin celda cliente', 'Error en doble clic', 'Campo no encontrado',
-                                           'Error extracción', 'Error popup', 'Campo vacío', '']:
+                if phone and phone not in ['Sin teléfono', 'Error OCR', 'Error popup', 'OCR no disponible', '']:
                     valid_phones += 1
 
             if valid_phones > 0:
@@ -210,6 +216,21 @@ class ExcelExporter:
                 self._log(f"📞 ✅ Columna teléfono incluida: {valid_phones} teléfonos válidos")
             else:
                 self._log(f"📞 ⚠️ Columna teléfono omitida: sin teléfonos válidos")
+
+        # 🆕 VERIFICAR FECHA CREACIÓN ESPECÍFICAMENTE
+        if 'fecha_creacion' in all_columns:
+            # Verificar si hay fechas válidas
+            valid_dates = 0
+            for record in data:
+                fecha = record.get('fecha_creacion', '')
+                if fecha and str(fecha).strip() and str(fecha).strip() != '':
+                    valid_dates += 1
+
+            if valid_dates > 0:
+                columns_with_data.append('fecha_creacion')
+                self._log(f"📅 ✅ Columna fecha creación incluida: {valid_dates} fechas válidas")
+            else:
+                self._log(f"📅 ⚠️ Columna fecha creación omitida: sin fechas válidas")
 
         # Luego verificar otras columnas según el orden preferido
         for col in self.column_order:
@@ -255,22 +276,17 @@ class ExcelExporter:
         return columns_with_data
 
     def _create_headers(self, worksheet, columns: List[str]):
-        """Crea los headers del Excel incluyendo teléfono"""
-        self._log(f"📋 Creando headers para {len(columns)} columnas")
+        """Crea los headers del Excel con formato uniforme"""
+        self._log(f"📋 Creando headers uniformes para {len(columns)} columnas")
 
         for col_index, column in enumerate(columns, 1):
             cell = worksheet.cell(row=1, column=col_index)
             header_text = self.column_headers.get(column, column.title())
             cell.value = header_text
 
-            # 🆕 Destacar header de teléfono con color diferente
-            if column == 'telefono_cliente':
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = PatternFill(start_color="228B22", end_color="228B22", fill_type="solid")  # Verde
-                self._log(f"📞 Header TELÉFONO destacado: '{header_text}'")
-            else:
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            # 🎨 Estilo uniforme para todos los headers
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")  # Azul uniforme
 
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = Border(
@@ -280,12 +296,12 @@ class ExcelExporter:
                 bottom=Side(style="thin")
             )
 
-            self._log(f"📋 Header {col_index}: '{header_text}' para columna '{column}'")
+            self._log(f"📋 Header uniforme {col_index}: '{header_text}' para columna '{column}'")
 
-        self._log("📋 Headers creados exitosamente")
+        self._log("📋 Headers uniformes creados exitosamente")
 
     def _insert_data_improved(self, worksheet, data: List[Dict], columns: List[str]) -> int:
-        """🔧 Inserta los datos en el worksheet con mejor manejo de teléfonos"""
+        """🔧 Inserta los datos en el worksheet con formato uniforme"""
         self._log(f"📊 Insertando datos: {len(data)} registros, {len(columns)} columnas")
 
         rows_inserted = 0
@@ -299,22 +315,19 @@ class ExcelExporter:
                 # Obtener valor del registro
                 raw_value = record.get(column, '')
 
-                # 🆕 Procesamiento especial para teléfonos
+                # Procesamiento específico por tipo de columna
                 if column == 'telefono_cliente':
                     processed_value = self._process_phone_value(raw_value)
-
-                    # Aplicar estilo especial para teléfonos
-                    if processed_value and processed_value not in ['Sin teléfono', 'Error']:
-                        cell.fill = PatternFill(start_color="F0FFF0", end_color="F0FFF0",
-                                                fill_type="solid")  # Verde claro
-                    elif processed_value in ['Error', 'Sin teléfono']:
-                        cell.fill = PatternFill(start_color="FFE4E1", end_color="FFE4E1",
-                                                fill_type="solid")  # Rosa claro
+                elif column == 'fecha_creacion':
+                    processed_value = self._process_date_value(raw_value)
                 else:
                     processed_value = self._process_cell_value(raw_value)
 
                 # Asignar valor a la celda
                 cell.value = processed_value
+
+                # 🎨 Sin estilos especiales - formato uniforme para todas las celdas
+                # (Solo bordes y alineación se aplicarán en _apply_formatting)
 
                 # Verificar si esta fila tiene al menos un dato significativo
                 if processed_value and str(processed_value).strip():
@@ -324,6 +337,8 @@ class ExcelExporter:
                 if row_index <= 3:
                     if column == 'telefono_cliente':
                         self._log(f"📞 DEBUG: Fila {row_index}, Teléfono: '{raw_value}' → '{processed_value}'")
+                    elif column == 'fecha_creacion':
+                        self._log(f"📅 DEBUG: Fila {row_index}, Fecha: '{raw_value}' → '{processed_value}'")
                     elif column in ['numero_orden', 'cliente']:
                         self._log(f"🔍 DEBUG: Fila {row_index}, {column}: '{raw_value}' → '{processed_value}'")
 
@@ -344,8 +359,8 @@ class ExcelExporter:
 
         # Casos de error específicos de teléfono
         error_cases = [
-            'Sin celda cliente', 'Error en doble clic', 'Campo no encontrado',
-            'Error extracción', 'Error popup', 'Campo vacío', 'none', 'null'
+            'Sin teléfono', 'Error OCR', 'Error popup', 'Error captura',
+            'Error análisis', 'OCR no disponible', 'none', 'null'
         ]
 
         if str_value.lower() in [case.lower() for case in error_cases]:
@@ -358,6 +373,25 @@ class ExcelExporter:
         cleaned = ' '.join(cleaned.split())
 
         return cleaned if cleaned else "Sin teléfono"
+
+    def _process_date_value(self, raw_value):
+        """🆕 Procesa específicamente valores de fecha creación"""
+        if not raw_value:
+            return "Sin fecha"
+
+        str_value = str(raw_value).strip()
+
+        # Casos de valores vacíos
+        if str_value.lower() in ['none', 'null', '', '&nbsp;']:
+            return "Sin fecha"
+
+        # Limpiar la fecha
+        cleaned = str_value.replace('&nbsp;', ' ')
+        cleaned = cleaned.replace('\xa0', ' ')
+        cleaned = cleaned.replace('\u00a0', ' ')
+        cleaned = ' '.join(cleaned.split())
+
+        return cleaned if cleaned else "Sin fecha"
 
     def _process_cell_value(self, raw_value):
         """🔧 Procesa y limpia valores de celda de manera robusta"""
@@ -422,7 +456,7 @@ class ExcelExporter:
             self._log(f"📋 Creando tabla Excel en rango: {table_range}")
 
             # Crear tabla
-            table = Table(displayName="DatosExtraidosConTelefonos", ref=table_range)
+            table = Table(displayName="DatosExtraidos", ref=table_range)
 
             # Estilo de tabla
             style = TableStyleInfo(
@@ -442,7 +476,7 @@ class ExcelExporter:
             self._log(f"⚠️ No se pudo crear tabla: {str(e)}", "WARNING")
 
     def _adjust_column_widths(self, worksheet, columns: List[str]):
-        """Ajusta automáticamente el ancho de las columnas incluyendo teléfono"""
+        """Ajusta automáticamente el ancho de las columnas con formato uniforme"""
         try:
             # Definir anchos mínimos y máximos
             min_width = 10
@@ -458,8 +492,10 @@ class ExcelExporter:
                     width = 18
                 elif column == 'cliente':
                     width = 25
-                elif column == 'telefono_cliente':  # 🆕 Ancho para teléfono
+                elif column == 'telefono_cliente':
                     width = 20
+                elif column == 'fecha_creacion':
+                    width = 18
                 elif column in ['tecnico', 'distrito', 'barrio', 'canton']:
                     width = 15
                 elif column == 'observaciones':
@@ -471,18 +507,18 @@ class ExcelExporter:
                 width = max(min_width, min(width, max_width))
                 worksheet.column_dimensions[column_letter].width = width
 
-            self._log("📏 Anchos de columna ajustados (incluyendo teléfono)")
+            self._log("📏 Anchos de columna ajustados con formato uniforme")
 
         except Exception as e:
             self._log(f"⚠️ Error ajustando anchos: {str(e)}", "WARNING")
 
     def create_summary_sheet(self, workbook, data: List[Dict], summary_info: Dict):
-        """Crea una hoja de resumen con estadísticas incluyendo teléfonos"""
+        """Crea una hoja de resumen con estadísticas y formato uniforme"""
         try:
             summary_sheet = workbook.create_sheet("Resumen")
 
             # Título
-            summary_sheet['A1'] = "Resumen de Extracción de Datos con Teléfonos"
+            summary_sheet['A1'] = "Resumen de Extracción de Datos"
             summary_sheet['A1'].font = Font(size=16, bold=True)
 
             # Información general
@@ -491,8 +527,10 @@ class ExcelExporter:
                 ("Fecha de extracción:", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                 ("Total de registros:", len(data)),
                 ("Registros válidos:", summary_info.get('valid_records', 0)),
-                ("Teléfonos extraídos:", summary_info.get('phones_extracted', 0)),  # 🆕
-                ("Errores de teléfono:", summary_info.get('phone_errors', 0)),  # 🆕
+                ("Teléfonos extraídos:", summary_info.get('phones_extracted', 0)),
+                ("Fechas creación extraídas:", self._count_valid_dates(data)),
+                ("Errores de teléfono:", summary_info.get('phone_errors', 0)),
+                ("Método OCR usado:", summary_info.get('ocr_method_used', 'N/A')),
                 ("Campos extraídos:", ', '.join(summary_info.get('fields_extracted', []))),
             ]
 
@@ -500,17 +538,11 @@ class ExcelExporter:
                 summary_sheet[f'A{row}'] = label
                 summary_sheet[f'A{row}'].font = Font(bold=True)
 
-                # 🆕 Colorear estadísticas de teléfono
-                if "Teléfonos" in label:
-                    summary_sheet[f'A{row}'].fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6",
-                                                                fill_type="solid")
-                    summary_sheet[f'B{row}'].fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6",
-                                                                fill_type="solid")
-
+                # 🎨 Sin colores especiales - formato uniforme
                 summary_sheet[f'B{row}'] = value
                 row += 1
 
-            # 🆕 Estadísticas específicas de teléfonos
+            # Estadísticas de tasa de éxito
             if summary_info.get('phones_extracted', 0) > 0:
                 row += 1
                 summary_sheet[f'A{row}'] = "Tasa de éxito de teléfonos:"
@@ -518,7 +550,7 @@ class ExcelExporter:
 
                 total_attempts = summary_info.get('phones_extracted', 0) + summary_info.get('phone_errors', 0)
                 success_rate = (
-                            summary_info.get('phones_extracted', 0) / total_attempts * 100) if total_attempts > 0 else 0
+                        summary_info.get('phones_extracted', 0) / total_attempts * 100) if total_attempts > 0 else 0
                 summary_sheet[f'B{row}'] = f"{success_rate:.1f}%"
                 row += 1
 
@@ -538,14 +570,26 @@ class ExcelExporter:
             summary_sheet.column_dimensions['A'].width = 25
             summary_sheet.column_dimensions['B'].width = 30
 
-            self._log("📊 Hoja de resumen con estadísticas de teléfono creada")
+            self._log("📊 Hoja de resumen con formato uniforme creada")
 
         except Exception as e:
             self._log(f"⚠️ Error creando resumen: {str(e)}", "WARNING")
 
+    def _count_valid_dates(self, data: List[Dict]) -> int:
+        """🆕 Cuenta las fechas de creación válidas"""
+        try:
+            valid_dates = 0
+            for record in data:
+                fecha = record.get('fecha_creacion', '')
+                if fecha and str(fecha).strip() and str(fecha).strip() not in ['Sin fecha', '']:
+                    valid_dates += 1
+            return valid_dates
+        except Exception:
+            return 0
+
     def export_with_summary(self, data: List[Dict], summary_info: Dict,
                             filename: Optional[str] = None) -> tuple[bool, str, str]:
-        """Exporta datos con hoja de resumen incluida (con estadísticas de teléfono)"""
+        """Exporta datos con hoja de resumen incluida (con estadísticas completas)"""
         try:
             if not OPENPYXL_AVAILABLE:
                 return False, "openpyxl no está disponible", ""
@@ -555,7 +599,9 @@ class ExcelExporter:
 
             # 🔍 DEBUG: Verificar datos antes de exportar
             phones_count = summary_info.get('phones_extracted', 0)
-            self._log(f"🔍 DEBUG: Exportando con resumen - {len(data)} registros, {phones_count} teléfonos")
+            dates_count = self._count_valid_dates(data)
+            self._log(
+                f"🔍 DEBUG: Exportando con resumen - {len(data)} registros, {phones_count} teléfonos, {dates_count} fechas")
 
             # Preparar archivo
             if not os.path.exists(self.output_directory):
@@ -575,7 +621,7 @@ class ExcelExporter:
 
             # Hoja de datos principal
             main_sheet = workbook.active
-            main_sheet.title = "Datos con Teléfonos"
+            main_sheet.title = "Datos Extraídos"
             setup_success = self._setup_worksheet(main_sheet, data)
 
             if not setup_success:
@@ -589,7 +635,7 @@ class ExcelExporter:
 
             if os.path.exists(filepath):
                 file_size = os.path.getsize(filepath)
-                success_message = f"Excel con resumen creado: {len(data)} registros, {phones_count} teléfonos ({file_size} bytes)"
+                success_message = f"Excel con resumen creado: {len(data)} registros, {phones_count} teléfonos, {dates_count} fechas ({file_size} bytes)"
                 self._log(f"✅ {success_message}")
                 return True, success_message, filepath
             else:
@@ -601,7 +647,7 @@ class ExcelExporter:
             return False, error_msg, ""
 
     def validate_excel_file(self, filepath: str) -> tuple[bool, str]:
-        """Valida que el archivo Excel se creó correctamente incluyendo teléfonos"""
+        """Valida que el archivo Excel se creó correctamente incluyendo teléfonos y fechas"""
         try:
             if not os.path.exists(filepath):
                 return False, "Archivo no existe"
@@ -619,12 +665,14 @@ class ExcelExporter:
             if not any(first_row_values):
                 return False, "Archivo no tiene headers válidos"
 
-            # 🆕 Verificar si incluye columna de teléfono
+            # 🆕 Verificar columnas especiales
             has_phone_column = any('Teléfono' in str(val) for val in first_row_values if val)
+            has_date_column = any('Fecha Creación' in str(val) for val in first_row_values if val)
 
             # Verificar que hay datos en las celdas
             data_cells_found = 0
             phone_cells_found = 0
+            date_cells_found = 0
 
             for row in range(2, min(worksheet.max_row + 1, 5)):  # Verificar primeras filas
                 for col in range(1, worksheet.max_column + 1):
@@ -632,10 +680,13 @@ class ExcelExporter:
                     if cell_value and str(cell_value).strip():
                         data_cells_found += 1
 
-                        # 🆕 Contar celdas de teléfono específicamente
+                        # 🆕 Contar celdas especiales
                         header_value = worksheet.cell(row=1, column=col).value
-                        if header_value and 'Teléfono' in str(header_value):
-                            phone_cells_found += 1
+                        if header_value:
+                            if 'Teléfono' in str(header_value):
+                                phone_cells_found += 1
+                            elif 'Fecha Creación' in str(header_value):
+                                date_cells_found += 1
 
             workbook.close()
 
@@ -645,6 +696,8 @@ class ExcelExporter:
                 validation_msg = f"Archivo válido ({file_size} bytes, {worksheet.max_row - 1} registros, {data_cells_found} celdas con datos"
                 if has_phone_column:
                     validation_msg += f", columna teléfono incluida con {phone_cells_found} valores"
+                if has_date_column:
+                    validation_msg += f", columna fecha creación incluida con {date_cells_found} valores"
                 validation_msg += ")"
                 return True, validation_msg
             else:
@@ -654,13 +707,14 @@ class ExcelExporter:
             return False, f"Error validando archivo: {str(e)}"
 
     def get_export_info(self) -> Dict:
-        """Obtiene información sobre el exportador incluyendo soporte para teléfonos"""
+        """Obtiene información sobre el exportador incluyendo soporte para teléfonos y fechas"""
         return {
             'available': OPENPYXL_AVAILABLE,
             'output_directory': self.output_directory,
             'supported_formats': ['xlsx'],
             'default_filename': self.default_filename,
             'column_headers': self.column_headers,
-            'phone_support': True,  # 🆕
-            'special_formatting': True  # 🆕
+            'phone_support': True,
+            'date_support': True,  # 🆕
+            'special_formatting': True
         }
