@@ -2,8 +2,8 @@
 # Ubicación: /syncro_bot/gui/components/automation/handlers/dropdown_handler.py
 """
 Gestor especializado de los tres dropdowns de automatización.
-Maneja la selección automática de: 140_AUTO INSTALACION, 102_UDR_FS y PENDIENTE
-con esperas robustas y validación de carga completa de opciones.
+Maneja la selección automática de: 140_AUTO INSTALACION, 102_UDR_FS y estado configurable
+(PENDIENTE o FINALIZADO) con esperas robustas y validación de carga completa de opciones.
 """
 
 import time
@@ -21,7 +21,7 @@ except ImportError:
 
 
 class DropdownHandler:
-    """Gestor especializado de los tres dropdowns de automatización"""
+    """Gestor especializado de los tres dropdowns de automatización con estado configurable"""
 
     def __init__(self, web_driver_manager, logger=None):
         self.web_driver_manager = web_driver_manager
@@ -53,17 +53,26 @@ class DropdownHandler:
             ]
         }
 
-        # XPaths para tercer dropdown (PENDIENTE)
+        # 🆕 XPaths para tercer dropdown con opciones configurables
         self.third_dropdown_xpaths = {
             'trigger': '//*[@id="combo-1142-trigger-picker"]',
             'input': '//*[@id="combo-1142-inputEl"]',
-            'options': [
-                '//li[text()="PENDIENTE"]',
-                '//li[@class="x-boundlist-item" and text()="PENDIENTE"]',
-                '//ul[contains(@id, "listEl")]//li[text()="PENDIENTE"]',
-                '//li[@data-recordid="24808"]',
-                '//li[contains(text(), "PENDIENTE")]'
-            ]
+            'options': {
+                'PENDIENTE': [
+                    '//li[text()="PENDIENTE"]',
+                    '//li[@class="x-boundlist-item" and text()="PENDIENTE"]',
+                    '//ul[contains(@id, "listEl")]//li[text()="PENDIENTE"]',
+                    '//li[@data-recordid="24808"]',
+                    '//li[contains(text(), "PENDIENTE")]'
+                ],
+                'FINALIZADO': [
+                    '//li[text()="FINALIZADA"]',
+                    '//li[@class="x-boundlist-item" and text()="FINALIZADA"]',
+                    '//ul[contains(@id, "listEl")]//li[text()="FINALIZADA"]',
+                    '//li[@data-recordid="23933"]',
+                    '//li[contains(text(), "FINALIZADA")]'
+                ]
+            }
         }
 
         # Configuración de timeouts específicos para dropdowns
@@ -326,10 +335,16 @@ class DropdownHandler:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    def handle_third_dropdown_selection(self, driver):
-        """Maneja la selección automática del tercer dropdown (PENDIENTE)"""
+    def handle_third_dropdown_selection(self, driver, selected_state="PENDIENTE"):
+        """🆕 Maneja la selección configurable del tercer dropdown (PENDIENTE o FINALIZADO)"""
         try:
-            self._log("🔽 Iniciando selección del tercer dropdown (PENDIENTE)...")
+            self._log(f"🔽 Iniciando selección del tercer dropdown ({selected_state})...")
+
+            # Validar que el estado sea válido
+            if selected_state not in self.third_dropdown_xpaths['options']:
+                self._log(f"⚠️ Estado '{selected_state}' no válido, usando PENDIENTE por defecto", "WARNING")
+                selected_state = "PENDIENTE"
+
             wait = WebDriverWait(driver, self.third_dropdown_wait_timeout)
 
             # Paso 1: Buscar el trigger del tercer dropdown
@@ -352,9 +367,9 @@ class DropdownHandler:
                 self._log(f"📋 Valor actual del tercer dropdown: '{current_value}'")
 
                 # Si ya tiene el valor correcto, no necesitamos hacer nada
-                if "PENDIENTE" in current_value:
-                    self._log("✅ El tercer dropdown ya tiene el valor correcto")
-                    return True, "Tercer dropdown ya configurado con PENDIENTE"
+                if selected_state in current_value:
+                    self._log(f"✅ El tercer dropdown ya tiene el valor correcto ({selected_state})")
+                    return True, f"Tercer dropdown ya configurado con {selected_state}"
 
             except Exception as e:
                 self._log(f"No se pudo leer valor actual del tercer dropdown: {e}", "DEBUG")
@@ -391,16 +406,19 @@ class DropdownHandler:
 
             # Espera adicional para asegurar carga completa
             time.sleep(3)
-            self._log("📋 Lista de opciones completamente cargada, buscando 'PENDIENTE'...")
+            self._log(f"📋 Lista de opciones completamente cargada, buscando '{selected_state}'...")
 
-            # Paso 5: Buscar y seleccionar la opción "PENDIENTE"
+            # Paso 5: Buscar y seleccionar la opción configurada
             option_found = False
             selected_option_text = ""
 
-            # Intentar con los XPaths definidos
-            for i, option_xpath in enumerate(self.third_dropdown_xpaths['options']):
+            # 🆕 Obtener XPaths específicos para el estado seleccionado
+            state_xpaths = self.third_dropdown_xpaths['options'][selected_state]
+
+            # Intentar con los XPaths específicos del estado
+            for i, option_xpath in enumerate(state_xpaths):
                 try:
-                    self._log(f"Probando XPath {i + 1} en tercer dropdown: {option_xpath}")
+                    self._log(f"Probando XPath {i + 1} para {selected_state}: {option_xpath}")
 
                     # Esperar a que la opción específica esté disponible
                     option_element = WebDriverWait(driver, 8).until(
@@ -412,7 +430,16 @@ class DropdownHandler:
                     self._log(f"✅ Opción encontrada en tercer dropdown: '{selected_option_text}'")
 
                     # Verificar que sea exactamente la opción que buscamos
-                    if "PENDIENTE" in selected_option_text:
+                    if selected_state == "FINALIZADO" and "FINALIZADA" in selected_option_text:
+                        # Hacer clic en la opción
+                        self.web_driver_manager.scroll_to_element(option_element)
+                        time.sleep(0.5)
+                        option_element.click()
+
+                        option_found = True
+                        self._log(f"🎯 Opción seleccionada en tercer dropdown: '{selected_option_text}'")
+                        break
+                    elif selected_state == "PENDIENTE" and selected_state in selected_option_text:
                         # Hacer clic en la opción
                         self.web_driver_manager.scroll_to_element(option_element)
                         time.sleep(0.5)
@@ -441,8 +468,8 @@ class DropdownHandler:
                 except:
                     pass
 
-                self._log("❌ No se pudo encontrar la opción PENDIENTE", "WARNING")
-                return False, "No se encontró la opción 'PENDIENTE' en el tercer dropdown"
+                self._log(f"❌ No se pudo encontrar la opción {selected_state}", "WARNING")
+                return False, f"No se encontró la opción '{selected_state}' en el tercer dropdown"
 
             # Paso 7: Esperar y verificar que se haya seleccionado correctamente
             time.sleep(3)
@@ -451,10 +478,13 @@ class DropdownHandler:
                 final_value = updated_input.get_attribute('value')
                 self._log(f"✅ Valor final del tercer dropdown: '{final_value}'")
 
-                if "PENDIENTE" in final_value:
+                # 🆕 Validación especial para FINALIZADO -> FINALIZADA
+                if selected_state == "FINALIZADO" and "FINALIZADA" in final_value:
+                    return True, f"Tercer dropdown seleccionado exitosamente: '{final_value}'"
+                elif selected_state == "PENDIENTE" and selected_state in final_value:
                     return True, f"Tercer dropdown seleccionado exitosamente: '{final_value}'"
                 else:
-                    return False, f"Tercer dropdown no se actualizó correctamente. Valor: '{final_value}'"
+                    return False, f"Tercer dropdown no se actualizó correctamente. Esperado: {selected_state}, Actual: '{final_value}'"
 
             except Exception as e:
                 self._log(f"Error verificando selección final del tercer dropdown: {e}", "WARNING")
@@ -502,8 +532,8 @@ class DropdownHandler:
             self._log(f"Error obteniendo valores de dropdowns: {e}", "WARNING")
             return None
 
-    def validate_dropdown_selections(self, driver):
-        """Valida que todos los dropdowns tengan los valores correctos"""
+    def validate_dropdown_selections(self, driver, expected_state="PENDIENTE"):
+        """🆕 Valida que todos los dropdowns tengan los valores correctos incluyendo el estado configurable"""
         try:
             values = self.get_current_dropdown_values(driver)
             if not values:
@@ -519,24 +549,31 @@ class DropdownHandler:
             if not values['second_dropdown'] or "102_UDR_FS" not in values['second_dropdown']:
                 errors.append("Segundo dropdown no tiene '102_UDR_FS'")
 
-            # Validar tercer dropdown
-            if not values['third_dropdown'] or "PENDIENTE" not in values['third_dropdown']:
-                errors.append("Tercer dropdown no tiene 'PENDIENTE'")
+            # 🆕 Validar tercer dropdown con estado configurable
+            third_dropdown_value = values['third_dropdown']
+            if expected_state == "FINALIZADO":
+                # Caso especial: FINALIZADO se muestra como FINALIZADA en el sistema
+                if not third_dropdown_value or "FINALIZADA" not in third_dropdown_value:
+                    errors.append(f"Tercer dropdown no tiene 'FINALIZADA' (configurado como {expected_state})")
+            else:
+                # Caso normal para PENDIENTE u otros estados
+                if not third_dropdown_value or expected_state not in third_dropdown_value:
+                    errors.append(f"Tercer dropdown no tiene '{expected_state}'")
 
             if errors:
                 return False, f"Errores de validación: {'; '.join(errors)}"
 
-            return True, "Todos los dropdowns están correctamente configurados"
+            return True, f"Todos los dropdowns están correctamente configurados (Estado: {expected_state})"
 
         except Exception as e:
             error_msg = f"Error validando dropdowns: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    def process_all_dropdowns(self, driver):
-        """Procesa los tres dropdowns en secuencia"""
+    def process_all_dropdowns(self, driver, selected_state="PENDIENTE"):
+        """🆕 Procesa los tres dropdowns en secuencia con estado configurable"""
         try:
-            self._log("🔽 Iniciando procesamiento de todos los dropdowns...")
+            self._log(f"🔽 Iniciando procesamiento de todos los dropdowns (Estado: {selected_state})...")
 
             # Primer dropdown
             first_success, first_message = self.handle_first_dropdown_selection(driver)
@@ -548,19 +585,27 @@ class DropdownHandler:
             if not second_success:
                 return False, f"Error en segundo dropdown: {second_message}"
 
-            # Tercer dropdown
-            third_success, third_message = self.handle_third_dropdown_selection(driver)
+            # 🆕 Tercer dropdown con estado configurable
+            third_success, third_message = self.handle_third_dropdown_selection(driver, selected_state)
             if not third_success:
                 return False, f"Error en tercer dropdown: {third_message}"
 
-            # Validación final
-            validation_success, validation_message = self.validate_dropdown_selections(driver)
+            # 🆕 Validación final con estado esperado
+            validation_success, validation_message = self.validate_dropdown_selections(driver, selected_state)
             if not validation_success:
                 return False, f"Validación falló: {validation_message}"
 
-            return True, "Todos los dropdowns procesados exitosamente"
+            return True, f"Todos los dropdowns procesados exitosamente (Estado: {selected_state})"
 
         except Exception as e:
             error_msg = f"Error procesando dropdowns: {str(e)}"
             self._log(error_msg, "ERROR")
             return False, error_msg
+
+    def get_available_states(self):
+        """🆕 Obtiene las opciones de estado disponibles para el tercer dropdown"""
+        return list(self.third_dropdown_xpaths['options'].keys())
+
+    def is_state_supported(self, state):
+        """🆕 Verifica si un estado es compatible con el dropdown"""
+        return state in self.third_dropdown_xpaths['options']

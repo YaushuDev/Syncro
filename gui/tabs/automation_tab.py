@@ -1,10 +1,11 @@
 # automation_tab.py
 # Ubicación: /syncro_bot/gui/tabs/automation_tab.py
 """
-Pestaña de automatización refactorizada para Syncro Bot con configuración de fechas.
-Coordina todos los componentes de automatización: credenciales, configuración de fechas,
-servicio, UI y logging. Mantiene la interfaz limpia y maneja la comunicación
-entre componentes y la integración con el sistema de registro.
+Pestaña de automatización refactorizada para Syncro Bot con configuración de fechas
+y estado. Coordina todos los componentes de automatización: credenciales, configuración
+de fechas, configuración de estado (PENDIENTE/FINALIZADO), servicio, UI y logging.
+Mantiene la interfaz limpia y maneja la comunicación entre componentes y la integración
+con el sistema de registro.
 """
 
 import tkinter as tk
@@ -15,6 +16,7 @@ from datetime import datetime
 # Importar componentes de automatización
 from ..components.automation.credentials_manager import CredentialsManager
 from ..components.automation.date_config_manager import DateConfigManager
+from ..components.automation.state_config_manager import StateConfigManager  # 🆕
 from ..components.automation.automation_service import AutomationService
 from ..components.automation.automation_ui_components import (
     AutomationTheme, AutomationUIFactory, CollapsibleSection
@@ -23,7 +25,7 @@ from ..components.automation.automation_logger import AutomationLoggerFactory, L
 
 
 class AutomationTab:
-    """Pestaña de automatización refactorizada con componentes modulares y configuración de fechas"""
+    """Pestaña de automatización refactorizada con componentes modulares, configuración de fechas y estado"""
 
     def __init__(self, parent_notebook):
         self.parent = parent_notebook
@@ -32,6 +34,7 @@ class AutomationTab:
         # Componentes principales
         self.credentials_manager = CredentialsManager()
         self.date_config_manager = DateConfigManager()
+        self.state_config_manager = StateConfigManager()  # 🆕
         self.automation_service = None
         self.logger = None
 
@@ -92,7 +95,7 @@ class AutomationTab:
         self._create_right_column(main_container)
 
     def _create_left_column(self, parent):
-        """Crea la columna izquierda con secciones colapsables"""
+        """Crea la columna izquierda con secciones colapsables incluyendo configuración de estado"""
         left_column = tk.Frame(parent, bg=self.theme.colors['bg_primary'], width=500)
         left_column.grid(row=0, column=0, sticky='ns', padx=(0, 5))
         left_column.grid_propagate(False)
@@ -100,14 +103,16 @@ class AutomationTab:
         # Configurar filas
         left_column.grid_rowconfigure(0, weight=0)  # Credenciales
         left_column.grid_rowconfigure(1, weight=0)  # 🆕 Configuración de fechas
-        left_column.grid_rowconfigure(2, weight=0)  # Estado
-        left_column.grid_rowconfigure(3, weight=0)  # Controles
-        left_column.grid_rowconfigure(4, weight=1)  # Espaciador
+        left_column.grid_rowconfigure(2, weight=0)  # 🆕 Configuración de estado
+        left_column.grid_rowconfigure(3, weight=0)  # Estado
+        left_column.grid_rowconfigure(4, weight=0)  # Controles
+        left_column.grid_rowconfigure(5, weight=1)  # Espaciador
         left_column.grid_columnconfigure(0, weight=1)
 
         # Crear secciones usando componentes modulares
         self._create_credentials_section(left_column)
-        self._create_date_config_section(left_column)  # 🆕 Nueva sección
+        self._create_date_config_section(left_column)
+        self._create_state_config_section(left_column)  # 🆕 Nueva sección
         self._create_status_section(left_column)
         self._create_controls_section(left_column)
 
@@ -170,12 +175,147 @@ class AutomationTab:
         # Guardar referencia al formulario para métodos específicos
         self.date_config_form = date_config_form
 
+    def _create_state_config_section(self, parent):
+        """🆕 Crea sección de configuración de estado usando componentes modulares"""
+        section = AutomationUIFactory.create_collapsible_section(
+            parent, "state_config", "📋 Configuración de Estado", self.theme
+        )
+        content = section.create(row=2, min_height=180, default_expanded=False)
+        section.set_toggle_callback(self._on_section_toggle)
+        self.section_frames["state_config"] = section
+
+        # Crear formulario de configuración de estado
+        self._create_state_config_form(content)
+
+    def _create_state_config_form(self, parent):
+        """🆕 Crea el formulario de configuración de estado personalizado"""
+        # Contenedor principal
+        form_frame = tk.Frame(parent, bg=self.theme.colors['bg_primary'])
+        form_frame.pack(fill='both', expand=True, padx=15, pady=10)
+
+        # Título y descripción
+        title_label = tk.Label(
+            form_frame,
+            text="Seleccionar Estado del Dropdown",
+            font=('Segoe UI', 10, 'bold'),
+            fg=self.theme.colors['text_primary'],
+            bg=self.theme.colors['bg_primary']
+        )
+        title_label.pack(anchor='w', pady=(0, 5))
+
+        desc_label = tk.Label(
+            form_frame,
+            text="Configura si el tercer dropdown debe seleccionar PENDIENTE o FINALIZADO",
+            font=('Segoe UI', 8),
+            fg=self.theme.colors['text_secondary'],
+            bg=self.theme.colors['bg_primary']
+        )
+        desc_label.pack(anchor='w', pady=(0, 15))
+
+        # Variable para radio buttons
+        self.state_var = tk.StringVar(value="PENDIENTE")
+
+        # Frame para radio buttons
+        radio_frame = tk.Frame(form_frame, bg=self.theme.colors['bg_primary'])
+        radio_frame.pack(fill='x', pady=(0, 15))
+
+        # Radio button para PENDIENTE
+        pendiente_radio = tk.Radiobutton(
+            radio_frame,
+            text="⏳ PENDIENTE",
+            variable=self.state_var,
+            value="PENDIENTE",
+            font=('Segoe UI', 9),
+            fg=self.theme.colors['text_primary'],
+            bg=self.theme.colors['bg_primary'],
+            selectcolor='#e6f3ff',
+            activebackground=self.theme.colors['bg_primary'],
+            activeforeground=self.theme.colors['text_primary'],
+            command=self._on_state_change
+        )
+        pendiente_radio.pack(anchor='w', pady=2)
+
+        # Radio button para FINALIZADO
+        finalizado_radio = tk.Radiobutton(
+            radio_frame,
+            text="✅ FINALIZADO",
+            variable=self.state_var,
+            value="FINALIZADO",
+            font=('Segoe UI', 9),
+            fg=self.theme.colors['text_primary'],
+            bg=self.theme.colors['bg_primary'],
+            selectcolor='#e6f3ff',
+            activebackground=self.theme.colors['bg_primary'],
+            activeforeground=self.theme.colors['text_primary'],
+            command=self._on_state_change
+        )
+        finalizado_radio.pack(anchor='w', pady=2)
+
+        # Frame para botones
+        buttons_frame = tk.Frame(form_frame, bg=self.theme.colors['bg_primary'])
+        buttons_frame.pack(fill='x', pady=(10, 0))
+
+        # Botón para aplicar preset Pendiente
+        pendiente_button = tk.Button(
+            buttons_frame,
+            text="📋 Pendiente",
+            font=('Segoe UI', 8),
+            fg='white',
+            bg='#4a90e2',
+            activebackground='#357abd',
+            relief='flat',
+            padx=8,
+            pady=4,
+            command=self._set_pendiente_preset
+        )
+        pendiente_button.pack(side='left', padx=(0, 5))
+
+        # Botón para aplicar preset Finalizado
+        finalizado_button = tk.Button(
+            buttons_frame,
+            text="✅ Finalizado",
+            font=('Segoe UI', 8),
+            fg='white',
+            bg='#4a90e2',
+            activebackground='#357abd',
+            relief='flat',
+            padx=8,
+            pady=4,
+            command=self._set_finalizado_preset
+        )
+        finalizado_button.pack(side='left', padx=5)
+
+        # Botón para limpiar configuración
+        clear_state_button = tk.Button(
+            buttons_frame,
+            text="🗑️ Por Defecto",
+            font=('Segoe UI', 8),
+            fg='white',
+            bg='#6c757d',
+            activebackground='#545b62',
+            relief='flat',
+            padx=8,
+            pady=4,
+            command=self._clear_state_config
+        )
+        clear_state_button.pack(side='right')
+
+        # Guardar referencias
+        self.ui_components.update({
+            'state_var': self.state_var,
+            'pendiente_radio': pendiente_radio,
+            'finalizado_radio': finalizado_radio,
+            'pendiente_button': pendiente_button,
+            'finalizado_button': finalizado_button,
+            'clear_state_button': clear_state_button
+        })
+
     def _create_status_section(self, parent):
         """Crea sección de estado usando componentes modulares"""
         section = AutomationUIFactory.create_collapsible_section(
             parent, "status", "📊 Estado del Sistema", self.theme
         )
-        content = section.create(row=2, min_height=150, default_expanded=False)
+        content = section.create(row=3, min_height=150, default_expanded=False)
         section.set_toggle_callback(self._on_section_toggle)
         self.section_frames["status"] = section
 
@@ -192,7 +332,7 @@ class AutomationTab:
         section = AutomationUIFactory.create_collapsible_section(
             parent, "controls", "🎮 Controles de Automatización", self.theme
         )
-        content = section.create(row=3, min_height=180, default_expanded=False)
+        content = section.create(row=4, min_height=180, default_expanded=False)
         section.set_toggle_callback(self._on_section_toggle)
         self.section_frames["controls"] = section
 
@@ -216,17 +356,21 @@ class AutomationTab:
         # 🆕 Cargar configuración de fechas guardada
         self._load_saved_date_config()
 
+        # 🆕 Cargar configuración de estado guardada
+        self._load_saved_state_config()
+
         # Agregar mensajes iniciales al log
-        self.logger.info("🚀 Sistema de automatización con login automático y configuración de fechas iniciado")
-        self.logger.info("🔧 Configuración: Esperas robustas, detección inteligente y fechas configurables")
+        self.logger.info("🚀 Sistema de automatización con login automático, configuración de fechas y estado iniciado")
+        self.logger.info("🔧 Configuración: Esperas robustas, detección inteligente, fechas y estado configurables")
 
         if self.automation_service.is_selenium_available():
-            self.logger.info("✅ Selenium disponible - Login automático y configuración de fechas habilitados")
+            self.logger.info("✅ Selenium disponible - Login automático, configuración de fechas y estado habilitados")
         else:
             self.logger.warning("⚠️ Selenium no disponible - Solo modo navegador básico")
 
-        # Mostrar estado inicial de fechas
+        # Mostrar estado inicial de fechas y estado
         self._log_date_config_status()
+        self._log_state_config_status()
 
     def _on_section_toggle(self, section_id, is_expanded):
         """Maneja toggle de secciones - solo una expandida a la vez"""
@@ -407,6 +551,134 @@ class AutomationTab:
         except Exception as e:
             self.logger.error(f"❌ Error limpiando fechas: {e}")
 
+    # 🆕 MÉTODOS PARA CONFIGURACIÓN DE ESTADO
+
+    def _load_saved_state_config(self):
+        """🆕 Carga configuración de estado guardada al iniciar"""
+        try:
+            config = self.state_config_manager.load_config()
+            if config:
+                selected_state = config.get('selected_state', 'PENDIENTE')
+                self.state_var.set(selected_state)
+                self.logger.info("📋 Configuración de estado cargada desde archivo seguro")
+            else:
+                self.state_var.set('PENDIENTE')
+                self.logger.info("📋 Usando configuración de estado por defecto (PENDIENTE)")
+        except Exception as e:
+            self.logger.warning(f"Error cargando configuración de estado: {e}")
+            self.state_var.set('PENDIENTE')
+
+    def _save_current_state_config(self):
+        """🆕 Guarda la configuración actual de estado"""
+        try:
+            config = self._get_state_config_from_form()
+            success, message = self.state_config_manager.save_config(config)
+
+            if success:
+                self.logger.info(f"💾 {message}")
+                return True
+            else:
+                self.logger.error(f"❌ Error guardando estado: {message}")
+                return False
+        except Exception as e:
+            self.logger.error(f"❌ Excepción guardando configuración de estado: {e}")
+            return False
+
+    def _validate_current_state_config(self):
+        """🆕 Valida la configuración actual de estado"""
+        try:
+            config = self._get_state_config_from_form()
+            is_valid, message = self.state_config_manager.validate_config(config)
+
+            if not is_valid:
+                self.logger.warning(f"⚠️ Configuración de estado inválida: {message}")
+                messagebox.showerror("Configuración de Estado Inválida", message)
+                return False
+
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ Error validando estado: {e}")
+            messagebox.showerror("Error", f"Error validando estado: {str(e)}")
+            return False
+
+    def _get_state_config_from_form(self):
+        """🆕 Obtiene configuración de estado desde el formulario"""
+        return {
+            'selected_state': self.state_var.get(),
+            'auto_save': True
+        }
+
+    def _get_state_config_for_automation(self):
+        """🆕 Obtiene configuración de estado para enviar al automation_service"""
+        try:
+            config = self._get_state_config_from_form()
+
+            # Guardar configuración automáticamente antes de usarla
+            self._save_current_state_config()
+
+            return config
+        except Exception as e:
+            self.logger.error(f"❌ Error obteniendo configuración de estado: {e}")
+            return {'selected_state': 'PENDIENTE', 'auto_save': True}  # Fallback seguro
+
+    def _log_state_config_status(self):
+        """🆕 Muestra el estado actual de configuración de estado en el log"""
+        try:
+            config = self._get_state_config_from_form()
+            selected_state = config.get('selected_state', 'PENDIENTE')
+            display_name = self.state_config_manager.get_state_display_name(selected_state)
+            self.logger.info(f"📋 Configuración de estado: {display_name}")
+        except Exception as e:
+            self.logger.warning(f"Error mostrando estado de configuración: {e}")
+
+    def _on_state_change(self):
+        """🆕 Callback cuando cambia la selección de estado"""
+        try:
+            self._save_current_state_config()
+            self._log_state_config_status()
+        except Exception as e:
+            self.logger.error(f"❌ Error al cambiar estado: {e}")
+
+    def _set_pendiente_preset(self):
+        """🆕 Aplica preset PENDIENTE"""
+        try:
+            success, message = self.state_config_manager.apply_preset('pendiente')
+            if success:
+                self.state_var.set('PENDIENTE')
+                self.logger.info(f"📋 {message}")
+                self._log_state_config_status()
+            else:
+                self.logger.error(f"❌ Error aplicando preset PENDIENTE: {message}")
+        except Exception as e:
+            self.logger.error(f"❌ Error aplicando preset PENDIENTE: {e}")
+
+    def _set_finalizado_preset(self):
+        """🆕 Aplica preset FINALIZADO"""
+        try:
+            success, message = self.state_config_manager.apply_preset('finalizado')
+            if success:
+                self.state_var.set('FINALIZADO')
+                self.logger.info(f"✅ {message}")
+                self._log_state_config_status()
+            else:
+                self.logger.error(f"❌ Error aplicando preset FINALIZADO: {message}")
+        except Exception as e:
+            self.logger.error(f"❌ Error aplicando preset FINALIZADO: {e}")
+
+    def _clear_state_config(self):
+        """🆕 Limpia configuración de estado (vuelve a por defecto)"""
+        try:
+            if messagebox.askyesno("Confirmar", "¿Restablecer configuración de estado a valores por defecto (PENDIENTE)?"):
+                success, message = self.state_config_manager.clear_config()
+                if success:
+                    self.state_var.set('PENDIENTE')
+                    self.logger.info(f"🗑️ {message}")
+                    self._log_state_config_status()
+                else:
+                    self.logger.error(f"❌ Error restableciendo estado: {message}")
+        except Exception as e:
+            self.logger.error(f"❌ Error restableciendo configuración de estado: {e}")
+
     # MÉTODOS EXISTENTES DE CREDENCIALES (sin cambios)
 
     def _test_credentials(self):
@@ -437,7 +709,11 @@ class AutomationTab:
                 self.logger.info("👤 Ingresando credenciales...")
                 self.logger.info("🔐 Verificando login...")
 
-                success, message = self.automation_service.test_credentials(username, password)
+                # 🆕 Incluir configuraciones de fecha y estado en la prueba
+                date_config = self._get_date_config_for_automation()
+                state_config = self._get_state_config_for_automation()
+
+                success, message = self.automation_service.test_credentials(username, password, date_config, state_config)
                 self.frame.after(0, lambda: self._handle_test_credentials_result(success, message))
             except Exception as e:
                 self.frame.after(0, lambda: self._handle_test_credentials_result(False, str(e)))
@@ -494,12 +770,16 @@ class AutomationTab:
                 messagebox.showerror("Error", f"Error eliminando credenciales: {clear_message}")
 
     def _start_automation(self):
-        """🔄 Inicia la automatización con configuración de fechas"""
+        """🔄 Inicia la automatización con configuración de fechas y estado"""
         if self._is_closing:
             return
 
         # 🆕 Validar configuración de fechas antes de iniciar
         if not self._validate_current_date_config():
+            return
+
+        # 🆕 Validar configuración de estado antes de iniciar
+        if not self._validate_current_state_config():
             return
 
         username, password = self._get_credentials_from_form()
@@ -516,12 +796,19 @@ class AutomationTab:
         # 🆕 Obtener configuración de fechas
         date_config = self._get_date_config_for_automation()
 
+        # 🆕 Obtener configuración de estado
+        state_config = self._get_state_config_for_automation()
+
         def start_thread():
             try:
                 if self._is_closing:
                     return
 
-                self.logger.log_automation_start({'username': username, 'date_config': date_config})
+                self.logger.log_automation_start({
+                    'username': username,
+                    'date_config': date_config,
+                    'state_config': state_config  # 🆕
+                })
 
                 # Registrar inicio de ejecución
                 if self.registry_tab:
@@ -530,6 +817,9 @@ class AutomationTab:
                         profile_name = "Manual (Con Login"
                         if not date_config.get('skip_dates', True):
                             profile_name += " + Fechas"
+                        # 🆕 Incluir estado en el nombre del perfil
+                        selected_state = state_config.get('selected_state', 'PENDIENTE')
+                        profile_name += f" + Estado: {selected_state}"
                         profile_name += ")"
 
                         self.current_execution_record = self.registry_tab.add_execution_record(
@@ -541,8 +831,10 @@ class AutomationTab:
                     except Exception as e:
                         self.logger.warning(f"Error creando registro: {str(e)}")
 
-                # 🆕 Iniciar automatización con configuración de fechas
-                success, message = self.automation_service.start_automation(username, password, date_config)
+                # 🆕 Iniciar automatización con configuración de fechas y estado
+                success, message = self.automation_service.start_automation(
+                    username, password, date_config, state_config
+                )
 
                 if not self._is_closing:
                     self.frame.after(0, lambda: self._handle_start_result(success, message))
@@ -557,7 +849,7 @@ class AutomationTab:
         threading.Thread(target=start_thread, daemon=True).start()
 
     def _handle_start_result(self, success, message):
-        """Maneja el resultado del inicio de automatización"""
+        """🆕 Maneja el resultado del inicio de automatización incluyendo estado"""
         if self._is_closing:
             return
 
@@ -574,6 +866,7 @@ class AutomationTab:
                 display_message += "🎯 Características avanzadas activas:\n"
                 display_message += "• Login automático completado\n"
                 display_message += "• Configuración de fechas aplicada\n"
+                display_message += "• Configuración de estado aplicada\n"  # 🆕
                 display_message += "• Esperas robustas implementadas\n"
                 display_message += "• Detección inteligente de carga\n"
                 display_message += "• Navegador controlado automáticamente\n\n"
@@ -658,7 +951,7 @@ class AutomationTab:
         """Obtiene el estado actual de la automatización"""
         return self.automation_service.get_status()
 
-    # 🆕 MÉTODOS PÚBLICOS PARA CONFIGURACIÓN DE FECHAS
+    # 🆕 MÉTODOS PÚBLICOS PARA CONFIGURACIÓN DE FECHAS Y ESTADO
 
     def get_current_date_config(self):
         """Obtiene la configuración actual de fechas"""
@@ -679,6 +972,26 @@ class AutomationTab:
             self.logger.error(f"Error estableciendo configuración de fechas: {e}")
             return False
 
+    def get_current_state_config(self):
+        """🆕 Obtiene la configuración actual de estado"""
+        try:
+            return self._get_state_config_from_form()
+        except Exception as e:
+            self.logger.warning(f"Error obteniendo configuración de estado: {e}")
+            return {'selected_state': 'PENDIENTE', 'auto_save': True}
+
+    def set_state_config(self, config):
+        """🆕 Establece configuración de estado específica"""
+        try:
+            selected_state = config.get('selected_state', 'PENDIENTE')
+            self.state_var.set(selected_state)
+            self._save_current_state_config()
+            self._log_state_config_status()
+            return True
+        except Exception as e:
+            self.logger.error(f"Error estableciendo configuración de estado: {e}")
+            return False
+
     def apply_date_preset(self, preset_name):
         """Aplica un preset de fechas predefinido"""
         try:
@@ -695,16 +1008,33 @@ class AutomationTab:
             self.logger.error(f"❌ Excepción aplicando preset: {e}")
             return False
 
+    def apply_state_preset(self, preset_name):
+        """🆕 Aplica un preset de estado predefinido"""
+        try:
+            success, message = self.state_config_manager.apply_preset(preset_name)
+            if success:
+                # Recargar configuración en la UI
+                self._load_saved_state_config()
+                self.logger.info(f"📋 {message}")
+                return True
+            else:
+                self.logger.error(f"❌ Error aplicando preset: {message}")
+                return False
+        except Exception as e:
+            self.logger.error(f"❌ Excepción aplicando preset: {e}")
+            return False
+
     def cleanup(self):
         """Limpia recursos al cerrar la pestaña"""
         self._is_closing = True
         self.logger.info("Cerrando sistema...")
 
-        # Guardar configuración actual antes de cerrar
+        # Guardar configuraciones actuales antes de cerrar
         try:
             self._save_current_date_config()
+            self._save_current_state_config()  # 🆕
         except Exception as e:
-            self.logger.warning(f"Error guardando configuración al cerrar: {e}")
+            self.logger.warning(f"Error guardando configuraciones al cerrar: {e}")
 
         # Si hay una ejecución en curso, marcarla como interrumpida
         if self.registry_tab and self.current_execution_record:
