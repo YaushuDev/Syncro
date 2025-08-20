@@ -2,11 +2,9 @@
 # Ubicación: /syncro_bot/gui/tabs/automation_tab.py
 """
 Pestaña de automatización refactorizada para Syncro Bot con configuración de fechas
-y estado. Coordina todos los componentes de automatización: credenciales, configuración
-de fechas, configuración de estado (PENDIENTE/FINALIZADO/FINALIZADO_67_PLUS), servicio,
-UI y logging. Incluye extracción de números de serie de equipos mediante lectura de
-tablas HTML dentro de popups (sin OCR). Mantiene la interfaz limpia y maneja la
-comunicación entre componentes.
+obligatoria y estado. Coordina todos los componentes de automatización: credenciales,
+configuración de fechas (ahora obligatoria), configuración de estado, servicio, UI y logging.
+Incluye extracción de números de serie de equipos mediante lectura de tablas HTML.
 """
 
 import tkinter as tk
@@ -26,7 +24,7 @@ from ..components.automation.automation_logger import AutomationLoggerFactory, L
 
 
 class AutomationTab:
-    """Pestaña de automatización refactorizada con componentes modulares, configuración de fechas y estado expandido, y extracción de números de serie"""
+    """Pestaña de automatización refactorizada con componentes modulares, configuración de fechas obligatoria y estado expandido, y extracción de números de serie"""
 
     def __init__(self, parent_notebook):
         self.parent = parent_notebook
@@ -160,7 +158,7 @@ class AutomationTab:
         section = AutomationUIFactory.create_collapsible_section(
             parent, "date_config", "📅 Configuración de Fechas", self.theme
         )
-        content = section.create(row=1, min_height=220, default_expanded=False)
+        content = section.create(row=1, min_height=220, default_expanded=False)  # Cerrada por defecto
         section.set_toggle_callback(self._on_section_toggle)
         self.section_frames["date_config"] = section
 
@@ -181,7 +179,7 @@ class AutomationTab:
         section = AutomationUIFactory.create_collapsible_section(
             parent, "state_config", "📋 Configuración de Estado", self.theme
         )
-        content = section.create(row=2, min_height=220, default_expanded=False)  # 🆕 Aumentado min_height
+        content = section.create(row=2, min_height=220, default_expanded=False)
         section.set_toggle_callback(self._on_section_toggle)
         self.section_frames["state_config"] = section
 
@@ -337,10 +335,10 @@ class AutomationTab:
             'state_var': self.state_var,
             'pendiente_radio': pendiente_radio,
             'finalizado_radio': finalizado_radio,
-            'finalizado_67_plus_radio': finalizado_67_plus_radio,  # 🆕
+            'finalizado_67_plus_radio': finalizado_67_plus_radio,
             'pendiente_button': pendiente_button,
             'finalizado_button': finalizado_button,
-            'finalizado_67_plus_button': finalizado_67_plus_button,  # 🆕
+            'finalizado_67_plus_button': finalizado_67_plus_button,
             'clear_state_button': clear_state_button
         })
 
@@ -394,8 +392,10 @@ class AutomationTab:
         self._load_saved_state_config()
 
         # Agregar mensajes iniciales al log
-        self.logger.info("🚀 Sistema de automatización con login automático, configuración de fechas y estado iniciado")
-        self.logger.info("🔧 Configuración: Esperas robustas, detección inteligente, fechas y estado configurables")
+        self.logger.info(
+            "🚀 Sistema de automatización con login automático, configuración de fechas obligatoria y estado iniciado")
+        self.logger.info(
+            "🔧 Configuración: Esperas robustas, detección inteligente, fechas obligatorias y estado configurables")
         self.logger.info("🔢 Extracción avanzada de números de serie mediante lectura de tablas HTML")
 
         if self.automation_service.is_selenium_available():
@@ -412,6 +412,9 @@ class AutomationTab:
         # Mostrar estado inicial de fechas y estado
         self._log_date_config_status()
         self._log_state_config_status()
+
+        # Mostrar advertencia sobre fechas obligatorias
+        self.logger.warning("📅 IMPORTANTE: Ahora es obligatorio configurar fechas antes de iniciar la automatización")
 
     def _on_section_toggle(self, section_id, is_expanded):
         """Maneja toggle de secciones - solo una expandida a la vez"""
@@ -530,6 +533,212 @@ class AutomationTab:
             self.logger.error(f"❌ Excepción guardando configuración de fechas: {e}")
             return False
 
+    def _check_dates_configured(self):
+        """🆕 Verifica si las fechas están configuradas (no vacías y no omitidas)"""
+        try:
+            config = self.date_config_form.get_date_config()
+
+            # Si skip_dates es True, las fechas no están configuradas
+            if config.get('skip_dates', True):
+                return False
+
+            # Verificar que al menos una fecha esté configurada
+            date_from = config.get('date_from', '').strip()
+            date_to = config.get('date_to', '').strip()
+
+            # Si ambas fechas están vacías, no están configuradas
+            if not date_from and not date_to:
+                return False
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Error verificando configuración de fechas: {e}")
+            return False
+
+    def _show_date_configuration_dialog(self):
+        """🆕 Muestra diálogo para configurar fechas obligatorias"""
+        dialog = tk.Toplevel(self.frame)
+        dialog.title("Configuración de Fechas Requerida")
+        dialog.geometry("500x400")
+        dialog.resizable(False, False)
+        dialog.grab_set()  # Modal
+
+        # Centrar el diálogo
+        dialog.transient(self.frame.winfo_toplevel())
+
+        # Variable para resultado
+        result = {'configured': False}
+
+        # Frame principal
+        main_frame = tk.Frame(dialog, bg='white', padx=20, pady=20)
+        main_frame.pack(fill='both', expand=True)
+
+        # Título
+        title_label = tk.Label(
+            main_frame,
+            text="📅 Configuración de Fechas Obligatoria",
+            font=('Segoe UI', 14, 'bold'),
+            fg='#2c3e50',
+            bg='white'
+        )
+        title_label.pack(pady=(0, 10))
+
+        # Mensaje explicativo
+        message_label = tk.Label(
+            main_frame,
+            text="Debe configurar un rango de fechas antes de iniciar la automatización.\n"
+                 "Seleccione una opción rápida o configure fechas personalizadas:",
+            font=('Segoe UI', 10),
+            fg='#34495e',
+            bg='white',
+            justify='left'
+        )
+        message_label.pack(pady=(0, 20))
+
+        # Frame para opciones rápidas
+        quick_frame = tk.LabelFrame(main_frame, text="Opciones Rápidas", font=('Segoe UI', 10, 'bold'),
+                                    bg='white', fg='#2c3e50')
+        quick_frame.pack(fill='x', pady=(0, 15))
+
+        # Botones de opciones rápidas
+        quick_buttons = [
+            ("📅 Solo Hoy", lambda: self._apply_quick_date_option(dialog, result, 'today')),
+            ("📆 Última Semana", lambda: self._apply_quick_date_option(dialog, result, 'last_week')),
+            ("🗓️ Último Mes", lambda: self._apply_quick_date_option(dialog, result, 'last_month'))
+        ]
+
+        for i, (text, command) in enumerate(quick_buttons):
+            btn = tk.Button(
+                quick_frame,
+                text=text,
+                font=('Segoe UI', 9),
+                fg='white',
+                bg='#3498db',
+                activebackground='#2980b9',
+                relief='flat',
+                padx=15,
+                pady=8,
+                command=command
+            )
+            btn.pack(side='left', padx=5, pady=10)
+
+        # Frame para configuración manual
+        manual_frame = tk.LabelFrame(main_frame, text="Configuración Manual", font=('Segoe UI', 10, 'bold'),
+                                     bg='white', fg='#2c3e50')
+        manual_frame.pack(fill='x', pady=(0, 15))
+
+        # Campos de fecha
+        fields_frame = tk.Frame(manual_frame, bg='white')
+        fields_frame.pack(fill='x', padx=10, pady=10)
+
+        # Fecha desde
+        tk.Label(fields_frame, text="Fecha Desde (DD/MM/YYYY):", font=('Segoe UI', 9),
+                 bg='white', fg='#2c3e50').grid(row=0, column=0, sticky='w', pady=2)
+        date_from_entry = tk.Entry(fields_frame, font=('Segoe UI', 9), width=15)
+        date_from_entry.grid(row=0, column=1, padx=10, pady=2)
+
+        # Fecha hasta
+        tk.Label(fields_frame, text="Fecha Hasta (DD/MM/YYYY):", font=('Segoe UI', 9),
+                 bg='white', fg='#2c3e50').grid(row=1, column=0, sticky='w', pady=2)
+        date_to_entry = tk.Entry(fields_frame, font=('Segoe UI', 9), width=15)
+        date_to_entry.grid(row=1, column=1, padx=10, pady=2)
+
+        # Botón para aplicar configuración manual
+        apply_manual_btn = tk.Button(
+            manual_frame,
+            text="✅ Aplicar Fechas Manuales",
+            font=('Segoe UI', 9),
+            fg='white',
+            bg='#27ae60',
+            activebackground='#229954',
+            relief='flat',
+            padx=15,
+            pady=8,
+            command=lambda: self._apply_manual_dates(dialog, result, date_from_entry.get(), date_to_entry.get())
+        )
+        apply_manual_btn.pack(pady=10)
+
+        # Frame para botones de acción
+        action_frame = tk.Frame(main_frame, bg='white')
+        action_frame.pack(fill='x', pady=(15, 0))
+
+        # Botón cancelar
+        cancel_btn = tk.Button(
+            action_frame,
+            text="❌ Cancelar",
+            font=('Segoe UI', 9),
+            fg='white',
+            bg='#e74c3c',
+            activebackground='#c0392b',
+            relief='flat',
+            padx=15,
+            pady=8,
+            command=lambda: dialog.destroy()
+        )
+        cancel_btn.pack(side='right', padx=5)
+
+        # Esperar a que se cierre el diálogo
+        dialog.wait_window()
+
+        return result['configured']
+
+    def _apply_quick_date_option(self, dialog, result, option):
+        """🆕 Aplica una opción rápida de fechas"""
+        try:
+            success = False
+
+            if option == 'today':
+                success = self.apply_date_preset('today')
+            elif option == 'last_week':
+                success = self.apply_date_preset('last_week')
+            elif option == 'last_month':
+                success = self.apply_date_preset('last_month')
+
+            if success:
+                result['configured'] = True
+                self.logger.info(f"📅 Configuración rápida aplicada: {option}")
+                dialog.destroy()
+            else:
+                messagebox.showerror("Error", f"No se pudo aplicar la configuración {option}")
+
+        except Exception as e:
+            self.logger.error(f"Error aplicando opción rápida {option}: {e}")
+            messagebox.showerror("Error", f"Error aplicando configuración: {str(e)}")
+
+    def _apply_manual_dates(self, dialog, result, date_from, date_to):
+        """🆕 Aplica fechas configuradas manualmente"""
+        try:
+            # Validar fechas
+            if not date_from and not date_to:
+                messagebox.showerror("Error", "Debe ingresar al menos una fecha")
+                return
+
+            # Crear configuración
+            config = {
+                'skip_dates': False,
+                'date_from': date_from.strip(),
+                'date_to': date_to.strip()
+            }
+
+            # Validar configuración
+            is_valid, message = self.date_config_manager.validate_config(config)
+            if not is_valid:
+                messagebox.showerror("Fechas Inválidas", message)
+                return
+
+            # Aplicar configuración
+            success = self.set_date_config(config)
+            if success:
+                result['configured'] = True
+                self.logger.info(f"📅 Fechas manuales aplicadas: {date_from} - {date_to}")
+                dialog.destroy()
+            else:
+                messagebox.showerror("Error", "No se pudo guardar la configuración")
+
+        except Exception as e:
+            self.logger.error(f"Error aplicando fechas manuales: {e}")
+            messagebox.showerror("Error", f"Error configurando fechas: {str(e)}")
+
     def _validate_current_date_config(self):
         """Valida la configuración actual de fechas"""
         try:
@@ -566,7 +775,7 @@ class AutomationTab:
             config = self.date_config_form.get_date_config()
 
             if config['skip_dates']:
-                self.logger.info("📅 Configuración de fechas: OMITIR (comportamiento actual)")
+                self.logger.warning("📅 Configuración de fechas: NO CONFIGURADA (se requerirá antes de iniciar)")
             else:
                 date_from = config.get('date_from', 'No especificada')
                 date_to = config.get('date_to', 'No especificada')
@@ -587,7 +796,7 @@ class AutomationTab:
         """Limpia los campos de fecha"""
         try:
             self.date_config_form.clear_dates()
-            self.logger.info("🗑️ Campos de fecha limpiados")
+            self.logger.warning("🗑️ Campos de fecha limpiados - Se requerirá configuración antes de iniciar")
             self._log_date_config_status()
         except Exception as e:
             self.logger.error(f"❌ Error limpiando fechas: {e}")
@@ -826,9 +1035,33 @@ class AutomationTab:
                 messagebox.showerror("Error", f"Error eliminando credenciales: {clear_message}")
 
     def _start_automation(self):
-        """🔄 Inicia la automatización con configuración de fechas y estado expandida"""
+        """🔄 Inicia la automatización con verificación obligatoria de fechas"""
         if self._is_closing:
             return
+
+        # 🆕 VERIFICAR FECHAS OBLIGATORIAS ANTES DE CONTINUAR
+        if not self._check_dates_configured():
+            self.logger.warning("📅 No hay fechas configuradas - Solicitando configuración al usuario")
+
+            # Expandir sección de fechas para mostrar que es importante
+            if "date_config" in self.section_frames:
+                self.section_frames["date_config"].expand()
+
+            # Mostrar diálogo de configuración de fechas
+            configured = self._show_date_configuration_dialog()
+
+            if not configured:
+                self.logger.warning("📅 Usuario canceló la configuración de fechas - Automatización no iniciada")
+                messagebox.showwarning("Configuración Cancelada",
+                                       "La automatización requiere configurar fechas para continuar.")
+                return
+
+            # Verificar nuevamente que las fechas estén configuradas
+            if not self._check_dates_configured():
+                self.logger.error("📅 Error: Las fechas siguen sin estar configuradas después del diálogo")
+                messagebox.showerror("Error de Configuración",
+                                     "No se pudo configurar las fechas correctamente. Intente de nuevo.")
+                return
 
         # Validar configuración de fechas antes de iniciar
         if not self._validate_current_date_config():
@@ -849,7 +1082,7 @@ class AutomationTab:
             username = credentials.get('username')
             password = credentials.get('password')
 
-        # Obtener configuración de fechas
+        # Obtener configuración de fechas (ya verificada que existe)
         date_config = self._get_date_config_for_automation()
 
         # Obtener configuración de estado
@@ -928,7 +1161,7 @@ class AutomationTab:
             if self.automation_service.is_selenium_available():
                 display_message += "🎯 Características avanzadas activas:\n"
                 display_message += "• Login automático completado\n"
-                display_message += "• Configuración de fechas aplicada\n"
+                display_message += "• Configuración de fechas obligatoria aplicada\n"
                 display_message += "• Configuración de estado aplicada\n"
                 display_message += "• Extracción de números de serie mediante lectura de tablas HTML\n"
                 display_message += "• Esperas robustas implementadas\n"
