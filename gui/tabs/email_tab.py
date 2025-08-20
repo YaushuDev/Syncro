@@ -1,8 +1,9 @@
 # email_tab.py
 # Ubicación: /syncro_bot/gui/tabs/email_tab.py
 """
-Pestaña de configuración de email para Syncro Bot.
-Gestiona la configuración SMTP, pruebas de conexión, destinatarios y envío de correos.
+Pestaña de configuración de email para Syncro Bot con monitoreo de correos.
+Gestiona la configuración SMTP, pruebas de conexión, destinatarios, envío de correos
+y monitoreo de correos entrantes para detectar emails con título "SyncroBot".
 Incluye encriptación de datos, persistencia de configuración y soporte para adjuntos.
 """
 
@@ -12,7 +13,11 @@ import threading
 import json
 import os
 import smtplib
+import imaplib
+import email
 import re
+import time
+from datetime import datetime
 
 # Importaciones de email con manejo de errores
 try:
@@ -277,8 +282,204 @@ class EmailService:
             return False, clean_error
 
 
+class EmailMonitoringService:
+    """Servicio de monitoreo de correos entrantes para detectar emails con título 'SyncroBot'"""
+
+    def __init__(self, log_callback=None):
+        self.log_callback = log_callback
+        self.is_monitoring = False
+        self.monitoring_thread = None
+        self.stop_event = threading.Event()
+
+        # Configuración IMAP por proveedor
+        self.imap_configs = {
+            "Gmail": {"server": "imap.gmail.com", "port": 993},
+            "Outlook/Hotmail": {"server": "outlook.office365.com", "port": 993},
+            "Yahoo": {"server": "imap.mail.yahoo.com", "port": 993}
+        }
+
+        # Configuración actual
+        self.config = {}
+
+        # Intervalo de monitoreo en segundos
+        self.monitoring_interval = 30
+
+    def _log(self, message):
+        """Registra mensaje en el log"""
+        if self.log_callback:
+            self.log_callback(message)
+        else:
+            print(f"[EmailMonitoring] {message}")
+
+    def set_configuration(self, provider, email, password, custom_server=None, custom_port=None):
+        """Configura el servicio de monitoreo con la misma configuración que el email"""
+        self.config = {
+            "provider": provider,
+            "email": email,
+            "password": password
+        }
+
+        # Determinar servidor IMAP
+        if provider == "Personalizado" and custom_server:
+            # Para servidores personalizados, intentar inferir IMAP desde SMTP
+            if "smtp.gmail.com" in custom_server:
+                self.config["imap_server"] = "imap.gmail.com"
+                self.config["imap_port"] = 993
+            elif "smtp-mail.outlook.com" in custom_server:
+                self.config["imap_server"] = "outlook.office365.com"
+                self.config["imap_port"] = 993
+            elif "smtp.mail.yahoo.com" in custom_server:
+                self.config["imap_server"] = "imap.mail.yahoo.com"
+                self.config["imap_port"] = 993
+            else:
+                # Intentar inferir reemplazando smtp por imap
+                imap_server = custom_server.replace("smtp.", "imap.")
+                self.config["imap_server"] = imap_server
+                self.config["imap_port"] = 993
+        elif provider in self.imap_configs:
+            self.config["imap_server"] = self.imap_configs[provider]["server"]
+            self.config["imap_port"] = self.imap_configs[provider]["port"]
+        else:
+            raise ValueError(f"Proveedor no soportado para monitoreo: {provider}")
+
+    def test_imap_connection(self):
+        """Prueba la conexión IMAP"""
+        try:
+            if not self.config:
+                return False, "No hay configuración establecida"
+
+            # Conectar al servidor IMAP
+            mail = imaplib.IMAP4_SSL(self.config["imap_server"], self.config["imap_port"])
+
+            # Autenticar
+            mail.login(self.config["email"], self.config["password"])
+
+            # Verificar que tenga acceso a INBOX
+            mail.select('INBOX')
+
+            # Cerrar conexión
+            mail.close()
+            mail.logout()
+
+            return True, "Conexión IMAP exitosa"
+
+        except imaplib.IMAP4.error as e:
+            return False, f"Error IMAP: {str(e)}"
+        except Exception as e:
+            return False, f"Error de conexión IMAP: {str(e)}"
+
+    def start_monitoring(self):
+        """Inicia el monitoreo de correos"""
+        if self.is_monitoring:
+            return False, "El monitoreo ya está activo"
+
+        if not self.config:
+            return False, "No hay configuración establecida para monitoreo"
+
+        try:
+            # Probar conexión antes de iniciar
+            success, message = self.test_imap_connection()
+            if not success:
+                return False, f"No se puede iniciar monitoreo: {message}"
+
+            # Iniciar monitoreo
+            self.is_monitoring = True
+            self.stop_event.clear()
+            self.monitoring_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
+            self.monitoring_thread.start()
+
+            self._log("📧 Monitoreo de correos iniciado - Buscando emails con título 'SyncroBot'")
+            return True, "Monitoreo de correos iniciado exitosamente"
+
+        except Exception as e:
+            self.is_monitoring = False
+            return False, f"Error iniciando monitoreo: {str(e)}"
+
+    def stop_monitoring(self):
+        """Detiene el monitoreo de correos"""
+        if not self.is_monitoring:
+            return True, "El monitoreo no estaba activo"
+
+        try:
+            self.is_monitoring = False
+            self.stop_event.set()
+
+            # Esperar a que termine el hilo
+            if self.monitoring_thread and self.monitoring_thread.is_alive():
+                self.monitoring_thread.join(timeout=5)
+
+            self._log("🔴 Monitoreo de correos detenido")
+            return True, "Monitoreo de correos detenido"
+
+        except Exception as e:
+            return False, f"Error deteniendo monitoreo: {str(e)}"
+
+    def _monitoring_loop(self):
+        """Loop principal de monitoreo de correos"""
+        self._log(f"🔍 Iniciando búsqueda de correos cada {self.monitoring_interval} segundos")
+
+        while not self.stop_event.is_set():
+            try:
+                self._check_for_syncrobot_emails()
+            except Exception as e:
+                self._log(f"❌ Error en monitoreo: {str(e)}")
+
+            # Esperar intervalo o hasta que se detenga
+            self.stop_event.wait(self.monitoring_interval)
+
+    def _check_for_syncrobot_emails(self):
+        """Verifica si hay correos nuevos con título 'SyncroBot'"""
+        try:
+            # Conectar al servidor IMAP
+            mail = imaplib.IMAP4_SSL(self.config["imap_server"], self.config["imap_port"])
+            mail.login(self.config["email"], self.config["password"])
+            mail.select('INBOX')
+
+            # Buscar correos con 'SyncroBot' en el asunto
+            # Buscar correos recientes primero
+            search_criteria = '(UNSEEN SUBJECT "SyncroBot")'
+            status, data = mail.search(None, search_criteria)
+
+            if status == 'OK' and data[0]:
+                email_ids = data[0].split()
+
+                for email_id in email_ids:
+                    # Obtener el email
+                    status, msg_data = mail.fetch(email_id, '(RFC822)')
+
+                    if status == 'OK':
+                        # Parsear el email
+                        email_message = email.message_from_bytes(msg_data[0][1])
+                        subject = email_message.get('Subject', '')
+                        from_addr = email_message.get('From', '')
+                        date = email_message.get('Date', '')
+
+                        # Verificar que realmente contenga 'SyncroBot' en el título
+                        if 'SyncroBot' in subject:
+                            self._log("✅ Correo encontrado")
+                            self._log(f"   📨 De: {from_addr}")
+                            self._log(f"   📋 Asunto: {subject}")
+                            self._log(f"   📅 Fecha: {date}")
+
+            # Cerrar conexión
+            mail.close()
+            mail.logout()
+
+        except Exception as e:
+            self._log(f"❌ Error verificando correos: {str(e)}")
+
+    def get_status(self):
+        """Obtiene el estado actual del monitoreo"""
+        return {
+            'is_monitoring': self.is_monitoring,
+            'config_set': bool(self.config),
+            'monitoring_interval': self.monitoring_interval,
+            'thread_alive': self.monitoring_thread.is_alive() if self.monitoring_thread else False
+        }
+
+
 class EmailTab:
-    """Pestaña de configuración de email para Syncro Bot"""
+    """Pestaña de configuración de email para Syncro Bot con monitoreo de correos"""
 
     def __init__(self, parent_notebook):
         self.parent = parent_notebook
@@ -299,6 +500,7 @@ class EmailTab:
         # Servicios
         self.config_manager = EmailConfigManager()
         self.email_service = EmailService()
+        self.monitoring_service = EmailMonitoringService(log_callback=self._log_to_monitoring)
 
         # Variables de control
         self.is_testing = False
@@ -378,7 +580,8 @@ class EmailTab:
         """Crea la columna izquierda con secciones colapsables"""
         parent.grid_rowconfigure(0, weight=0)  # Sección de cuenta
         parent.grid_rowconfigure(1, weight=0)  # Sección de destinatarios
-        parent.grid_rowconfigure(2, weight=1)  # Espaciador
+        parent.grid_rowconfigure(2, weight=0)  # Sección de monitoreo
+        parent.grid_rowconfigure(3, weight=1)  # Espaciador
         parent.grid_columnconfigure(0, weight=1)
 
         # Sección de cuenta
@@ -395,9 +598,16 @@ class EmailTab:
             min_height=150
         )
 
+        # NUEVA: Sección de monitoreo
+        self._create_collapsible_section(
+            parent, "monitoring", "📬 Monitoreo de Correos",
+            self._create_monitoring_content, row=2, default_expanded=False,
+            min_height=180
+        )
+
         # Espaciador
         spacer = tk.Frame(parent, bg=self.colors['bg_primary'])
-        spacer.grid(row=2, column=0, sticky='nsew')
+        spacer.grid(row=3, column=0, sticky='nsew')
 
     def _create_collapsible_section(self, parent, section_id, title, content_creator,
                                     row, default_expanded=False, min_height=150):
@@ -609,11 +819,61 @@ class EmailTab:
                  fg=self.colors['text_secondary'], font=('Arial', 9, 'italic')).pack(
             anchor='w', pady=(5, 0))
 
+    def _create_monitoring_content(self, parent):
+        """NUEVA: Crea el contenido de monitoreo de correos"""
+        content = tk.Frame(parent, bg=self.colors['bg_primary'])
+        content.pack(fill='x', padx=18, pady=15)
+
+        # Título y descripción
+        tk.Label(content, text="📬 Buscar correos con título 'SyncroBot':",
+                 bg=self.colors['bg_primary'], fg=self.colors['text_primary'],
+                 font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 5))
+
+        tk.Label(content, text="Monitorea automáticamente la bandeja de entrada",
+                 bg=self.colors['bg_primary'], fg=self.colors['text_secondary'],
+                 font=('Arial', 9)).pack(anchor='w', pady=(0, 15))
+
+        # Estado del monitoreo
+        status_frame = tk.Frame(content, bg=self.colors['bg_tertiary'])
+        status_frame.pack(fill='x', pady=(0, 15))
+
+        tk.Label(status_frame, text="Estado:", bg=self.colors['bg_tertiary'],
+                 fg=self.colors['text_primary'], font=('Arial', 10)).pack(
+            side='left', padx=10, pady=8)
+
+        self.widgets['monitoring_status'] = tk.Label(
+            status_frame, text="Detenido", bg=self.colors['bg_tertiary'],
+            fg=self.colors['text_secondary'], font=('Arial', 10, 'bold')
+        )
+        self.widgets['monitoring_status'].pack(side='right', padx=10, pady=8)
+
+        # Botones de control
+        buttons_frame = tk.Frame(content, bg=self.colors['bg_primary'])
+        buttons_frame.pack(fill='x')
+
+        buttons_frame.grid_columnconfigure(0, weight=1)
+        buttons_frame.grid_columnconfigure(1, weight=1)
+
+        # Botón iniciar monitoreo
+        self.widgets['start_monitoring_button'] = self._create_styled_button(
+            buttons_frame, "▶️ Iniciar Monitoreo",
+            self._start_monitoring, self.colors['success']
+        )
+        self.widgets['start_monitoring_button'].grid(row=0, column=0, sticky='ew', padx=(0, 5))
+
+        # Botón detener monitoreo
+        self.widgets['stop_monitoring_button'] = self._create_styled_button(
+            buttons_frame, "⏹️ Detener Monitoreo",
+            self._stop_monitoring, self.colors['error']
+        )
+        self.widgets['stop_monitoring_button'].grid(row=0, column=1, sticky='ew', padx=(5, 0))
+        self.widgets['stop_monitoring_button'].configure(state='disabled')
+
     def _create_right_column(self, parent):
         """Crea el contenido de la columna derecha"""
         parent.grid_rowconfigure(0, weight=0)  # Estado
         parent.grid_rowconfigure(1, weight=0)  # Botones
-        parent.grid_rowconfigure(2, weight=1)  # Espaciador
+        parent.grid_rowconfigure(2, weight=1)  # Log (NUEVO)
         parent.grid_columnconfigure(0, weight=1)
 
         # Sección de estado
@@ -626,9 +886,10 @@ class EmailTab:
         actions_container.grid(row=1, column=0, sticky='ew', pady=(0, 15))
         self._create_action_buttons(actions_container)
 
-        # Espaciador
-        spacer = tk.Frame(parent, bg=self.colors['bg_primary'])
-        spacer.grid(row=2, column=0, sticky='nsew')
+        # NUEVO: Sección de log de monitoreo
+        log_container = tk.Frame(parent, bg=self.colors['bg_primary'])
+        log_container.grid(row=2, column=0, sticky='nsew')
+        self._create_monitoring_log_section(log_container)
 
     def _create_card_frame(self, parent, title):
         """Crea un frame tipo tarjeta"""
@@ -726,6 +987,31 @@ class EmailTab:
             self._clear_configuration, self.colors['error']
         )
         self.widgets['clear_button'].pack(fill='x')
+
+    def _create_monitoring_log_section(self, parent):
+        """NUEVA: Crea sección de log de monitoreo"""
+        card = self._create_card_frame(parent, "📋 Log de Monitoreo")
+
+        # Área de texto con scroll para el log
+        from tkinter import scrolledtext
+        self.widgets['monitoring_log'] = scrolledtext.ScrolledText(
+            card,
+            bg=self.colors['bg_tertiary'],
+            fg=self.colors['text_primary'],
+            font=('Consolas', 9),
+            relief='flat',
+            wrap=tk.WORD,
+            state=tk.DISABLED,
+            height=8
+        )
+        self.widgets['monitoring_log'].pack(fill='both', expand=True, pady=(0, 10))
+
+        # Botón para limpiar log de monitoreo
+        clear_log_btn = self._create_styled_button(
+            card, "🗑️ Limpiar Log",
+            self._clear_monitoring_log, self.colors['text_secondary']
+        )
+        clear_log_btn.pack(fill='x')
 
     def _create_styled_entry(self, parent, **kwargs):
         """Crea un Entry con estilo"""
@@ -843,7 +1129,7 @@ class EmailTab:
             if success:
                 self._update_config_status("✅ Guardada", self.colors['success'])
                 messagebox.showinfo("Éxito",
-                                    "¡Configuración guardada correctamente!\n\nEl sistema está listo para enviar correos.")
+                                    "¡Configuración guardada correctamente!\n\nEl sistema está listo para enviar correos y monitoreo.")
                 self.is_configured = True
             else:
                 messagebox.showerror("Error", "No se pudo guardar la configuración")
@@ -855,10 +1141,14 @@ class EmailTab:
         """Limpia la configuración"""
         if not messagebox.askyesno("Confirmar",
                                    "¿Está seguro de limpiar toda la configuración?\n\n" +
-                                   "Se eliminarán todos los datos guardados."):
+                                   "Se eliminarán todos los datos guardados y se detendrá el monitoreo."):
             return
 
         try:
+            # Detener monitoreo si está activo
+            if self.monitoring_service.get_status()['is_monitoring']:
+                self._stop_monitoring()
+
             # Limpiar campos
             self.widgets['email_entry'].delete(0, 'end')
             self.widgets['password_entry'].delete(0, 'end')
@@ -987,6 +1277,19 @@ class EmailTab:
         else:
             self.email_service.set_configuration(provider, email, password)
 
+    def _configure_monitoring_service(self):
+        """Configura el servicio de monitoreo"""
+        provider = self.widgets['provider_var'].get()
+        email = self._clean_entry_value(self.widgets['email_entry'])
+        password = self._clean_entry_value(self.widgets['password_entry'])
+
+        if provider == "Personalizado":
+            custom_server = self._clean_entry_value(self.widgets['smtp_entry'])
+            custom_port = int(self._clean_entry_value(self.widgets['port_entry']))
+            self.monitoring_service.set_configuration(provider, email, password, custom_server, custom_port)
+        else:
+            self.monitoring_service.set_configuration(provider, email, password)
+
     def _update_connection_status(self, text, color):
         """Actualiza estado de conexión"""
         self.widgets['connection_status'].configure(text=text, fg=color)
@@ -994,6 +1297,10 @@ class EmailTab:
     def _update_config_status(self, text, color):
         """Actualiza estado de configuración"""
         self.widgets['config_status'].configure(text=text, fg=color)
+
+    def _update_monitoring_status(self, text, color):
+        """Actualiza estado de monitoreo"""
+        self.widgets['monitoring_status'].configure(text=text, fg=color)
 
     def load_saved_config(self):
         """Carga configuración guardada"""
@@ -1049,6 +1356,90 @@ class EmailTab:
 
         threading.Thread(target=test, daemon=True).start()
 
+    # NUEVOS MÉTODOS PARA MONITOREO
+
+    def _start_monitoring(self):
+        """Inicia el monitoreo de correos"""
+        if not self._validate_fields():
+            messagebox.showerror("Configuración Incompleta",
+                                 "Debe configurar la cuenta de email antes de iniciar el monitoreo")
+            return
+
+        try:
+            # Configurar servicio de monitoreo
+            self._configure_monitoring_service()
+
+            # Iniciar monitoreo
+            success, message = self.monitoring_service.start_monitoring()
+
+            if success:
+                self._update_monitoring_status("🟢 Activo", self.colors['success'])
+                self.widgets['start_monitoring_button'].configure(state='disabled')
+                self.widgets['stop_monitoring_button'].configure(state='normal')
+                self._log_to_monitoring("✅ Monitoreo de correos iniciado exitosamente")
+                messagebox.showinfo("Monitoreo Iniciado", message)
+            else:
+                self._update_monitoring_status("❌ Error", self.colors['error'])
+                self._log_to_monitoring(f"❌ Error iniciando monitoreo: {message}")
+                messagebox.showerror("Error", f"No se pudo iniciar el monitoreo:\n\n{message}")
+
+        except Exception as e:
+            error_msg = f"Error iniciando monitoreo: {str(e)}"
+            self._update_monitoring_status("❌ Error", self.colors['error'])
+            self._log_to_monitoring(f"❌ {error_msg}")
+            messagebox.showerror("Error", error_msg)
+
+    def _stop_monitoring(self):
+        """Detiene el monitoreo de correos"""
+        try:
+            success, message = self.monitoring_service.stop_monitoring()
+
+            if success:
+                self._update_monitoring_status("⏹️ Detenido", self.colors['text_secondary'])
+                self.widgets['start_monitoring_button'].configure(state='normal')
+                self.widgets['stop_monitoring_button'].configure(state='disabled')
+                self._log_to_monitoring("🔴 Monitoreo de correos detenido")
+                messagebox.showinfo("Monitoreo Detenido", message)
+            else:
+                self._log_to_monitoring(f"❌ Error deteniendo monitoreo: {message}")
+                messagebox.showerror("Error", f"Error deteniendo monitoreo:\n\n{message}")
+
+        except Exception as e:
+            error_msg = f"Error deteniendo monitoreo: {str(e)}"
+            self._log_to_monitoring(f"❌ {error_msg}")
+            messagebox.showerror("Error", error_msg)
+
+    def _log_to_monitoring(self, message):
+        """Añade mensaje al log de monitoreo"""
+        try:
+            if 'monitoring_log' in self.widgets:
+                log_widget = self.widgets['monitoring_log']
+                log_widget.configure(state=tk.NORMAL)
+
+                # Añadir timestamp
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                formatted_message = f"[{timestamp}] {message}\n"
+
+                log_widget.insert(tk.END, formatted_message)
+                log_widget.configure(state=tk.DISABLED)
+                log_widget.see(tk.END)
+        except Exception as e:
+            print(f"Error logging to monitoring: {e}")
+
+    def _clear_monitoring_log(self):
+        """Limpia el log de monitoreo"""
+        try:
+            if 'monitoring_log' in self.widgets:
+                log_widget = self.widgets['monitoring_log']
+                log_widget.configure(state=tk.NORMAL)
+                log_widget.delete(1.0, tk.END)
+                log_widget.configure(state=tk.DISABLED)
+                self._log_to_monitoring("Log de monitoreo limpiado")
+        except Exception as e:
+            print(f"Error clearing monitoring log: {e}")
+
+    # MÉTODOS PÚBLICOS EXISTENTES
+
     def is_email_configured(self):
         """Verifica si email está configurado"""
         return self.is_configured
@@ -1080,3 +1471,16 @@ class EmailTab:
 
         except Exception as e:
             return False, str(e)
+
+    def get_monitoring_status(self):
+        """Obtiene el estado actual del monitoreo"""
+        return self.monitoring_service.get_status()
+
+    def cleanup(self):
+        """Limpia recursos al cerrar la pestaña"""
+        try:
+            # Detener monitoreo si está activo
+            if self.monitoring_service.get_status()['is_monitoring']:
+                self.monitoring_service.stop_monitoring()
+        except Exception as e:
+            print(f"Error cleaning up email tab: {e}")
