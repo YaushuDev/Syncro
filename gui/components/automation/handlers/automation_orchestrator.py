@@ -4,7 +4,7 @@
 Coordinador central del flujo completo de automatización con funcionalidad
 avanzada de extracción de teléfonos y configuración de estado. Orquesta la
 secuencia completa incluyendo doble clic en clientes para extraer números de
-teléfono, configuración de estado (PENDIENTE/FINALIZADO) y generar reportes
+teléfono, configuración de estado (PENDIENTE/FINALIZADO/FINALIZADO_67_PLUS) y generar reportes
 Excel completos con toda la información.
 """
 
@@ -23,7 +23,7 @@ class AutomationOrchestrator:
         self.button_handler = button_handler
         self.logger = logger
 
-        # 🆕 Handlers para extracción completa con teléfonos
+        # Handlers para extracción completa con teléfonos
         self.data_extractor = None
         self.excel_exporter = None
 
@@ -34,7 +34,7 @@ class AutomationOrchestrator:
         self._initialize_data_handlers()
 
     def _initialize_data_handlers(self):
-        """🆕 Inicializa los handlers de extracción con soporte para teléfonos"""
+        """Inicializa los handlers de extracción con soporte para teléfonos"""
         try:
             # Importar y crear handlers de datos actualizados
             from .data_extractor import DataExtractor
@@ -75,17 +75,17 @@ class AutomationOrchestrator:
         🔄 Ejecuta el flujo completo de automatización MEJORADO con estado configurable:
         1. Navegación y setup
         2. Login automático
-        3. Tres dropdowns (con estado configurable)
+        3. Tres dropdowns (con estado configurable y segundo dropdown variable)
         4. Configuración de fechas
         5. Botón de pestaña
         6. TRIPLE CLIC en botón de búsqueda
-        7. 🆕 EXTRACCIÓN COMPLETA con teléfonos (doble clic en cada cliente)
-        8. 🆕 EXPORTACIÓN A EXCEL con teléfonos y formato especial
+        7. EXTRACCIÓN COMPLETA con teléfonos (doble clic en cada cliente)
+        8. EXPORTACIÓN A EXCEL con teléfonos y formato especial
         """
         try:
             self._log("🚀 Iniciando flujo completo con extracción avanzada de teléfonos y estado configurable...")
 
-            # 🆕 Procesar configuración de estado
+            # Procesar configuración de estado
             selected_state = self._process_state_config(state_config)
             self._log(f"📋 Estado configurado: {selected_state}")
 
@@ -118,7 +118,7 @@ class AutomationOrchestrator:
                 self._log(f"Advertencia en configuración de fechas: {date_message}", "WARNING")
                 return True, f"Login y dropdowns completados. {date_message}"
 
-            # 🆕 PASO 6: TRIPLE CLIC Y EXTRACCIÓN COMPLETA CON TELÉFONOS
+            # PASO 6: TRIPLE CLIC Y EXTRACCIÓN COMPLETA CON TELÉFONOS
             extraction_success, extraction_message, excel_file = self._execute_complete_data_extraction_flow(driver)
             if not extraction_success:
                 self._log(f"Error en extracción completa: {extraction_message}", "ERROR")
@@ -140,7 +140,7 @@ class AutomationOrchestrator:
             return False, error_msg
 
     def _process_state_config(self, state_config):
-        """🆕 Procesa la configuración de estado y extrae el estado seleccionado"""
+        """Procesa la configuración de estado y extrae el estado seleccionado"""
         try:
             if not state_config:
                 self._log("📋 Sin configuración de estado, usando PENDIENTE por defecto")
@@ -161,7 +161,7 @@ class AutomationOrchestrator:
             return "PENDIENTE"
 
     def _execute_complete_data_extraction_flow(self, driver):
-        """🆕 Ejecuta el flujo completo: triple clic, extracción con teléfonos y Excel"""
+        """Ejecuta el flujo completo: triple clic, extracción con teléfonos y Excel"""
         try:
             self._log("📊 Iniciando flujo completo de extracción con teléfonos...")
 
@@ -182,7 +182,7 @@ class AutomationOrchestrator:
 
             self._log(f"✅ Triple clic completado: {triple_click_message}")
 
-            # 🆕 EXTRACCIÓN COMPLETA DE DATOS CON TELÉFONOS
+            # EXTRACCIÓN COMPLETA DE DATOS CON TELÉFONOS
             self._log("📋📞 Extrayendo datos completos incluyendo teléfonos (con doble clic)...")
             extraction_success, extraction_message, extracted_data = self.data_extractor.extract_table_data(driver)
 
@@ -194,7 +194,7 @@ class AutomationOrchestrator:
 
             self._log(f"✅ Datos completos extraídos: {len(extracted_data)} registros")
 
-            # 🆕 ANÁLISIS DE TELÉFONOS EXTRAÍDOS
+            # ANÁLISIS DE TELÉFONOS EXTRAÍDOS
             phones_extracted = 0
             phone_errors = 0
             for record in extracted_data:
@@ -222,7 +222,7 @@ class AutomationOrchestrator:
             self._log(
                 f"📊 Resumen completo: {summary_info.get('valid_records', 0)} registros válidos, {phones_extracted} teléfonos extraídos")
 
-            # 🆕 EXPORTACIÓN A EXCEL CON FORMATO ESPECIAL PARA TELÉFONOS
+            # EXPORTACIÓN A EXCEL CON FORMATO ESPECIAL PARA TELÉFONOS
             self._log("📄 Creando archivo Excel con teléfonos y formato especial...")
             excel_success, excel_message, excel_filepath = self.excel_exporter.export_with_summary(
                 extracted_data, summary_info
@@ -338,23 +338,23 @@ class AutomationOrchestrator:
             return False, error_msg
 
     def _execute_remaining_dropdowns_flow(self, driver, selected_state="PENDIENTE"):
-        """🆕 Ejecuta el flujo de segundo y tercer dropdown con estado configurable"""
+        """🆕 Ejecuta el flujo de segundo y tercer dropdown con estado configurable que afecta ambos dropdowns"""
         try:
             self._log(f"🔽 Iniciando flujo de dropdowns restantes (Estado: {selected_state})...")
 
-            # Segundo dropdown
+            # 🆕 Segundo dropdown con estado configurable (afecta la selección del despacho)
             second_dropdown_success, second_dropdown_message = self.dropdown_handler.handle_second_dropdown_selection(
-                driver)
+                driver, selected_state)
             if not second_dropdown_success:
                 return False, f"Error en segundo dropdown: {second_dropdown_message}"
 
-            # 🆕 Tercer dropdown con estado configurable
+            # Tercer dropdown con estado configurable
             third_dropdown_success, third_dropdown_message = self.dropdown_handler.handle_third_dropdown_selection(
                 driver, selected_state)
             if not third_dropdown_success:
                 return False, f"Segundo dropdown OK, pero error en tercer dropdown: {third_dropdown_message}"
 
-            # 🆕 Validación final de todos los dropdowns con estado esperado
+            # Validación final de todos los dropdowns con estado esperado
             validation_success, validation_message = self.dropdown_handler.validate_dropdown_selections(
                 driver, selected_state)
             if not validation_success:
@@ -393,11 +393,11 @@ class AutomationOrchestrator:
             return False, error_msg
 
     def test_automation_components(self, username, password, date_config=None, state_config=None):
-        """🆕 Prueba todos los componentes incluyendo funcionalidad de teléfonos y estado configurable"""
+        """🆕 Prueba todos los componentes incluyendo funcionalidad de teléfonos y estado configurable expandido"""
         try:
             self._log("🧪 Iniciando prueba completa de componentes con teléfonos y estado...")
 
-            # 🆕 Procesar configuración de estado
+            # Procesar configuración de estado
             selected_state = self._process_state_config(state_config)
 
             results = {
@@ -406,11 +406,11 @@ class AutomationOrchestrator:
                 'login_fields': False,
                 'login_process': False,
                 'dropdown_fields': False,
-                'state_configuration': False,  # 🆕
+                'state_configuration': False,
                 'date_fields': False,
                 'button_fields': False,
                 'data_extraction': False,
-                'phone_extraction': False,  # 🆕
+                'phone_extraction': False,
                 'excel_export': False
             }
 
@@ -439,7 +439,7 @@ class AutomationOrchestrator:
                         if dropdown_values is not None:
                             self._log("✅ Campos de dropdown: OK")
 
-                            # 🆕 Test 5: Configuración de estado
+                            # Test 5: Configuración de estado
                             available_states = self.dropdown_handler.get_available_states()
                             state_supported = self.dropdown_handler.is_state_supported(selected_state)
                             results['state_configuration'] = state_supported
@@ -467,7 +467,7 @@ class AutomationOrchestrator:
                             if results['data_extraction']:
                                 self._log("✅ Extracción de datos: OK")
 
-                                # 🆕 Test 9: Funcionalidad de teléfonos
+                                # Test 9: Funcionalidad de teléfonos
                                 results['phone_extraction'] = stats.get('phone_extraction_available', False)
                                 if results['phone_extraction']:
                                     self._log("✅ Extracción de teléfonos: OK")
@@ -499,7 +499,7 @@ class AutomationOrchestrator:
             return False, error_msg
 
     def get_automation_status(self, driver):
-        """🆕 Obtiene el estado completo incluyendo funcionalidad de teléfonos y estado"""
+        """Obtiene el estado completo incluyendo funcionalidad de teléfonos y estado"""
         try:
             if not driver or not self.web_driver_manager.is_driver_active():
                 return {
@@ -524,7 +524,7 @@ class AutomationOrchestrator:
             dropdown_values = self.dropdown_handler.get_current_dropdown_values(driver)
             status['dropdown_values'] = dropdown_values
 
-            # 🆕 Estado de configuración disponible
+            # Estado de configuración disponible
             status['available_states'] = self.dropdown_handler.get_available_states()
 
             # Estado de fechas
@@ -559,7 +559,7 @@ class AutomationOrchestrator:
         try:
             self._log(f"🎯 Ejecutando automatización parcial: {start_step} → {end_step}")
 
-            # 🆕 Procesar configuración de estado desde kwargs
+            # Procesar configuración de estado desde kwargs
             state_config = kwargs.get('state_config')
             selected_state = self._process_state_config(state_config)
 
@@ -568,7 +568,7 @@ class AutomationOrchestrator:
                 'first_dropdown': lambda: self._execute_first_dropdown_flow(driver),
                 'remaining_dropdowns': lambda: self._execute_remaining_dropdowns_flow(driver, selected_state),  # 🆕
                 'dates': lambda: self._execute_date_configuration_flow(driver, kwargs.get('date_config')),
-                'data_extraction': lambda: self._execute_complete_data_extraction_flow(driver)  # 🆕 Versión completa
+                'data_extraction': lambda: self._execute_complete_data_extraction_flow(driver)
             }
 
             step_order = ['login', 'first_dropdown', 'remaining_dropdowns', 'dates', 'data_extraction']
@@ -599,7 +599,7 @@ class AutomationOrchestrator:
                     else:
                         return False, f"Error en paso {step_name}: {message}"
                 elif step_name == 'remaining_dropdowns':
-                    # 🆕 Para dropdowns restantes, incluir estado en el mensaje
+                    # Para dropdowns restantes, incluir estado en el mensaje
                     success, message = step_function()
                     if success:
                         executed_steps.append(f"{step_name} (Estado: {selected_state})")
@@ -631,10 +631,10 @@ class AutomationOrchestrator:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    # 🆕 MÉTODOS PÚBLICOS PARA EXTRACCIÓN COMPLETA CON TELÉFONOS Y ESTADO
+    # MÉTODOS PÚBLICOS PARA EXTRACCIÓN COMPLETA CON TELÉFONOS Y ESTADO
 
     def extract_data_only(self, driver):
-        """🆕 Ejecuta solo la extracción completa (asume que ya se ejecutó el flujo)"""
+        """Ejecuta solo la extracción completa (asume que ya se ejecutó el flujo)"""
         try:
             if not self.data_extractor or not self.excel_exporter:
                 return False, "Handlers de extracción no disponibles", None
@@ -647,7 +647,7 @@ class AutomationOrchestrator:
             return False, error_msg, None
 
     def extract_basic_data_only(self, driver):
-        """🆕 Extrae solo datos básicos sin teléfonos (más rápido)"""
+        """Extrae solo datos básicos sin teléfonos (más rápido)"""
         try:
             if not self.data_extractor or not self.excel_exporter:
                 return False, "Handlers de extracción no disponibles", None
@@ -674,7 +674,7 @@ class AutomationOrchestrator:
             return False, error_msg, None
 
     def test_data_extraction(self, driver):
-        """🆕 Prueba la funcionalidad completa de extracción"""
+        """Prueba la funcionalidad completa de extracción"""
         try:
             if not self.data_extractor:
                 return False, "Data extractor no disponible"
@@ -702,10 +702,10 @@ class AutomationOrchestrator:
         try:
             return self.dropdown_handler.get_available_states()
         except Exception:
-            return ['PENDIENTE', 'FINALIZADO']  # Fallback
+            return ['PENDIENTE', 'FINALIZADO', 'FINALIZADO_67_PLUS']  # Fallback
 
     def test_state_configuration(self, driver, state_config):
-        """🆕 Prueba que la configuración de estado funcione correctamente"""
+        """Prueba que la configuración de estado funcione correctamente"""
         try:
             selected_state = self._process_state_config(state_config)
 

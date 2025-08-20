@@ -2,7 +2,7 @@
 # Ubicación: /syncro_bot/gui/components/automation/state_config_manager.py
 """
 Gestor de configuración de estado para automatización.
-Maneja la configuración de selección entre PENDIENTE y FINALIZADO
+Maneja la configuración de selección entre PENDIENTE, FINALIZADO y FINALIZADO_67_PLUS
 para el tercer dropdown del sistema de automatización.
 """
 
@@ -21,7 +21,8 @@ class StateConfigManager:
         # Opciones válidas para el estado
         self.valid_states = {
             'PENDIENTE': 'PENDIENTE',
-            'FINALIZADO': 'FINALIZADO'
+            'FINALIZADO': 'FINALIZADO',
+            'FINALIZADO_67_PLUS': 'FINALIZADO_67_PLUS'  # 🆕 Nuevo estado
         }
 
         # Configuración por defecto
@@ -124,7 +125,8 @@ class StateConfigManager:
         """Obtiene el nombre de visualización para un estado"""
         display_names = {
             'PENDIENTE': '⏳ Pendiente',
-            'FINALIZADO': '✅ Finalizado'
+            'FINALIZADO': '✅ Finalizado',
+            'FINALIZADO_67_PLUS': '📺 Finalizado 67 Plus'  # 🆕 Nuevo display name
         }
         return display_names.get(state, state)
 
@@ -133,6 +135,7 @@ class StateConfigManager:
         presets = {
             'pendiente': self.create_config_for_state('PENDIENTE'),
             'finalizado': self.create_config_for_state('FINALIZADO'),
+            'finalizado_67_plus': self.create_config_for_state('FINALIZADO_67_PLUS'),  # 🆕 Nuevo preset
             'default': self.get_default_config()
         }
 

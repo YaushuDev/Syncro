@@ -27,11 +27,11 @@ from .handlers.date_handler import DateHandler
 from .handlers.button_handler import ButtonHandler
 from .handlers.automation_orchestrator import AutomationOrchestrator
 from .credentials_manager import CredentialsManager
-from .state_config_manager import StateConfigManager  # 🆕
+from .state_config_manager import StateConfigManager
 
 
 class AutomationService:
-    """Servicio principal con funcionalidad completa de extracción de teléfonos y estado configurable"""
+    """Servicio principal con funcionalidad completa de extracción de teléfonos y estado configurable expandido"""
 
     def __init__(self, logger=None):
         self.is_running = False
@@ -42,8 +42,8 @@ class AutomationService:
         # Estado de última extracción
         self.last_extraction_file = None
         self.last_extraction_data = None
-        self.last_phone_count = 0  # 🆕 Contador de teléfonos extraídos
-        self.last_used_state = "PENDIENTE"  # 🆕 Último estado utilizado
+        self.last_phone_count = 0
+        self.last_used_state = "PENDIENTE"
 
         # Inicializar gestores especializados
         self._initialize_handlers()
@@ -51,7 +51,7 @@ class AutomationService:
         # Gestor de credenciales
         self.credentials_manager = CredentialsManager()
 
-        # 🆕 Gestor de configuración de estado
+        # Gestor de configuración de estado
         self.state_config_manager = StateConfigManager()
 
     def _initialize_handlers(self):
@@ -84,7 +84,7 @@ class AutomationService:
                 logger=self._log
             )
 
-            # 🆕 Orchestrador principal con funcionalidad completa de teléfonos y estado
+            # Orchestrador principal con funcionalidad completa de teléfonos y estado
             self.automation_orchestrator = AutomationOrchestrator(
                 web_driver_manager=self.web_driver_manager,
                 login_handler=self.login_handler,
@@ -121,7 +121,7 @@ class AutomationService:
         return self.target_url
 
     def start_automation(self, username=None, password=None, date_config=None, state_config=None):
-        """🔄 Inicia el proceso de automatización completo con extracción de teléfonos y estado configurable"""
+        """🔄 Inicia el proceso de automatización completo con extracción de teléfonos y estado configurable expandido"""
         try:
             with self._lock:
                 if self.is_running:
@@ -149,13 +149,13 @@ class AutomationService:
                 if not valid:
                     return False, f"Credenciales inválidas: {message}"
 
-                # 🆕 Procesar configuración de estado
+                # Procesar configuración de estado
                 if not state_config:
                     state_config = self.state_config_manager.load_config()
                     if not state_config:
                         state_config = self.state_config_manager.get_default_config()
 
-                # 🆕 Validar configuración de estado
+                # Validar configuración de estado
                 valid_state, state_message = self.state_config_manager.validate_config(state_config)
                 if not valid_state:
                     self._log(f"⚠️ Configuración de estado inválida, usando por defecto: {state_message}", "WARNING")
@@ -165,14 +165,14 @@ class AutomationService:
                 if not date_config:
                     date_config = {'skip_dates': True}
 
-                # 🆕 Registrar configuraciones
+                # Registrar configuraciones
                 selected_state = self.state_config_manager.get_current_state_for_automation(state_config)
                 self.last_used_state = selected_state
 
                 self._log("🚀 Iniciando automatización completa con extracción de teléfonos y estado configurable...")
                 self._log_automation_config(date_config, state_config)
 
-                # 🆕 Ejecutar automatización completa con teléfonos y estado
+                # Ejecutar automatización completa con teléfonos y estado
                 success, message = self.automation_orchestrator.execute_complete_automation(
                     username, password, date_config, state_config
                 )
@@ -180,7 +180,7 @@ class AutomationService:
                 if success:
                     self.is_running = True
 
-                    # 🆕 Extraer información del archivo Excel y contar teléfonos
+                    # Extraer información del archivo Excel y contar teléfonos
                     excel_file = self._extract_excel_file_from_message(message)
                     if excel_file:
                         self.last_extraction_file = excel_file
@@ -216,7 +216,7 @@ class AutomationService:
             return None
 
     def _extract_phone_count_from_message(self, message):
-        """🆕 Extrae el número de teléfonos del mensaje de éxito"""
+        """Extrae el número de teléfonos del mensaje de éxito"""
         try:
             # Buscar patrones como "5 teléfonos" o "con 3 teléfonos"
             import re
@@ -261,7 +261,7 @@ class AutomationService:
             return False, error_msg
 
     def test_credentials(self, username, password, date_config=None, state_config=None):
-        """🆕 Prueba las credenciales ejecutando automatización completa de prueba con estado"""
+        """Prueba las credenciales ejecutando automatización completa de prueba con estado"""
         try:
             if not SELENIUM_AVAILABLE:
                 return False, "Selenium no está disponible para probar credenciales"
@@ -275,13 +275,13 @@ class AutomationService:
             if not date_config:
                 date_config = {'skip_dates': True}
 
-            # 🆕 Si no se proporciona configuración de estado, usar por defecto
+            # Si no se proporciona configuración de estado, usar por defecto
             if not state_config:
                 state_config = self.state_config_manager.get_default_config()
 
             self._log("🧪 Iniciando prueba de credenciales con automatización completa y estado...")
 
-            # 🆕 Usar el orchestrador para la prueba con configuración de estado
+            # Usar el orchestrador para la prueba con configuración de estado
             success, message = self.automation_orchestrator.test_automation_components(
                 username, password, date_config, state_config
             )
@@ -405,7 +405,7 @@ class AutomationService:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    # 🆕 MÉTODOS PARA EXTRACCIÓN COMPLETA CON TELÉFONOS
+    # MÉTODOS PARA EXTRACCIÓN COMPLETA CON TELÉFONOS
 
     def execute_triple_click_search(self):
         """Ejecuta el triple clic en el botón de búsqueda (para uso manual)"""
@@ -420,7 +420,7 @@ class AutomationService:
             return False, error_msg
 
     def extract_data_with_phones(self):
-        """🆕 Ejecuta extracción completa con teléfonos (asume que ya se ejecutó el flujo)"""
+        """Ejecuta extracción completa con teléfonos (asume que ya se ejecutó el flujo)"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa", None
@@ -442,7 +442,7 @@ class AutomationService:
             return False, error_msg, None
 
     def extract_basic_data_only(self):
-        """🆕 Extrae solo datos básicos sin teléfonos (más rápido)"""
+        """Extrae solo datos básicos sin teléfonos (más rápido)"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa", None
@@ -480,11 +480,11 @@ class AutomationService:
         return self.last_extraction_file
 
     def get_last_phone_count(self):
-        """🆕 Obtiene el número de teléfonos extraídos en la última ejecución"""
+        """Obtiene el número de teléfonos extraídos en la última ejecución"""
         return self.last_phone_count
 
     def get_last_used_state(self):
-        """🆕 Obtiene el último estado utilizado en la automatización"""
+        """Obtiene el último estado utilizado en la automatización"""
         return self.last_used_state
 
     def get_export_directory(self):
@@ -519,7 +519,7 @@ class AutomationService:
             return False
 
     def is_phone_extraction_available(self):
-        """🆕 Verifica si la funcionalidad de extracción de teléfonos está disponible"""
+        """Verifica si la funcionalidad de extracción de teléfonos está disponible"""
         try:
             if not self.is_data_extraction_available():
                 return False
@@ -534,18 +534,18 @@ class AutomationService:
             self._log(f"Error verificando disponibilidad de teléfonos: {e}", "WARNING")
             return False
 
-    # 🆕 MÉTODOS PÚBLICOS PARA CONFIGURACIÓN DE ESTADO
+    # 🆕 MÉTODOS PÚBLICOS PARA CONFIGURACIÓN DE ESTADO EXPANDIDA
 
     def get_available_states(self):
-        """🆕 Obtiene los estados disponibles para configuración"""
+        """🆕 Obtiene los estados disponibles para configuración (incluyendo FINALIZADO_67_PLUS)"""
         try:
             return self.state_config_manager.get_valid_states()
         except Exception as e:
             self._log(f"Error obteniendo estados disponibles: {e}", "WARNING")
-            return {'PENDIENTE': 'PENDIENTE', 'FINALIZADO': 'FINALIZADO'}
+            return {'PENDIENTE': 'PENDIENTE', 'FINALIZADO': 'FINALIZADO', 'FINALIZADO_67_PLUS': 'FINALIZADO_67_PLUS'}
 
     def get_current_state_config(self):
-        """🆕 Obtiene la configuración actual de estado"""
+        """Obtiene la configuración actual de estado"""
         try:
             return self.state_config_manager.load_config()
         except Exception as e:
@@ -553,7 +553,7 @@ class AutomationService:
             return self.state_config_manager.get_default_config()
 
     def set_state_config(self, state_config):
-        """🆕 Establece una configuración de estado específica"""
+        """Establece una configuración de estado específica"""
         try:
             valid, message = self.state_config_manager.validate_config(state_config)
             if not valid:
@@ -573,7 +573,7 @@ class AutomationService:
             return False, error_msg
 
     def apply_state_preset(self, preset_name):
-        """🆕 Aplica un preset de estado predefinido"""
+        """Aplica un preset de estado predefinido"""
         try:
             success, message = self.state_config_manager.apply_preset(preset_name)
             if success:
@@ -587,7 +587,7 @@ class AutomationService:
             return False, error_msg
 
     def test_state_configuration(self, state_config):
-        """🆕 Prueba una configuración de estado específica"""
+        """Prueba una configuración de estado específica"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa para probar"
@@ -601,7 +601,7 @@ class AutomationService:
             return False, error_msg
 
     def get_automation_status_detailed(self):
-        """🆕 Obtiene estado detallado incluyendo información de teléfonos y estado"""
+        """🆕 Obtiene estado detallado incluyendo información de teléfonos y estado expandido"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return {
@@ -609,25 +609,25 @@ class AutomationService:
                     'driver_active': False,
                     'components': {},
                     'data_extraction_available': self.is_data_extraction_available(),
-                    'phone_extraction_available': self.is_phone_extraction_available(),  # 🆕
-                    'state_configuration_available': True,  # 🆕
-                    'available_states': self.get_available_states(),  # 🆕
-                    'current_state_config': self.get_current_state_config(),  # 🆕
+                    'phone_extraction_available': self.is_phone_extraction_available(),
+                    'state_configuration_available': True,
+                    'available_states': self.get_available_states(),
+                    'current_state_config': self.get_current_state_config(),
                     'last_extraction_file': self.last_extraction_file,
-                    'last_phone_count': self.last_phone_count,  # 🆕
-                    'last_used_state': self.last_used_state  # 🆕
+                    'last_phone_count': self.last_phone_count,
+                    'last_used_state': self.last_used_state
                 }
 
             status = self.automation_orchestrator.get_automation_status(self.web_driver_manager.driver)
             status['automation_running'] = self.is_running
             status['data_extraction_available'] = self.is_data_extraction_available()
-            status['phone_extraction_available'] = self.is_phone_extraction_available()  # 🆕
-            status['state_configuration_available'] = True  # 🆕
-            status['available_states'] = self.get_available_states()  # 🆕
-            status['current_state_config'] = self.get_current_state_config()  # 🆕
+            status['phone_extraction_available'] = self.is_phone_extraction_available()
+            status['state_configuration_available'] = True
+            status['available_states'] = self.get_available_states()
+            status['current_state_config'] = self.get_current_state_config()
             status['last_extraction_file'] = self.last_extraction_file
-            status['last_phone_count'] = self.last_phone_count  # 🆕
-            status['last_used_state'] = self.last_used_state  # 🆕
+            status['last_phone_count'] = self.last_phone_count
+            status['last_used_state'] = self.last_used_state
             status['export_directory'] = self.get_export_directory()
 
             return status
@@ -649,12 +649,12 @@ class AutomationService:
             }
 
     def execute_partial_automation(self, start_step, end_step, **kwargs):
-        """🆕 Ejecuta automatización parcial usando el orchestrador con soporte para estado"""
+        """Ejecuta automatización parcial usando el orchestrador con soporte para estado"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa"
 
-            # 🆕 Agregar configuración de estado a kwargs si no está presente
+            # Agregar configuración de estado a kwargs si no está presente
             if 'state_config' not in kwargs:
                 kwargs['state_config'] = self.get_current_state_config()
 
@@ -674,7 +674,7 @@ class AutomationService:
             self._log(f"Error en limpieza después de fallo: {e}", "WARNING")
 
     def _log_automation_config(self, date_config, state_config):
-        """🆕 Registra la configuración de automatización incluyendo teléfonos y estado"""
+        """🆕 Registra la configuración de automatización incluyendo teléfonos y estado expandido"""
         try:
             self._log("📋 Configuración de automatización:")
             self._log(f"  🌐 URL objetivo: {self.target_url}")
@@ -683,9 +683,10 @@ class AutomationService:
             self._log(
                 f"  📞 Extracción de teléfonos: {'✅ Habilitada' if self.is_phone_extraction_available() else '❌ No disponible'}")
 
-            # 🆕 Configuración de estado
+            # Configuración de estado
             selected_state = self.state_config_manager.get_current_state_for_automation(state_config)
-            self._log(f"  📋 Estado configurado: {selected_state}")
+            display_name = self.state_config_manager.get_state_display_name(selected_state)
+            self._log(f"  📋 Estado configurado: {display_name}")
 
             if date_config and not date_config.get('skip_dates', True):
                 date_from = date_config.get('date_from', 'No especificada')
@@ -702,7 +703,7 @@ class AutomationService:
             self._log(f"Error registrando configuración: {e}", "DEBUG")
 
     def get_handlers_status(self):
-        """🆕 Obtiene estado de todos los handlers incluyendo funcionalidad de teléfonos y estado"""
+        """🆕 Obtiene estado de todos los handlers incluyendo funcionalidad de teléfonos y estado expandido"""
         try:
             base_status = {
                 'web_driver_manager': {
@@ -715,9 +716,8 @@ class AutomationService:
                 },
                 'dropdown_handler': {
                     'available': self.dropdown_handler is not None,
-                    'state_support': True,  # 🆕
+                    'state_support': True,
                     'available_states': self.dropdown_handler.get_available_states() if self.dropdown_handler else []
-                    # 🆕
                 },
                 'date_handler': {
                     'available': self.date_handler is not None
@@ -729,14 +729,14 @@ class AutomationService:
                 'automation_orchestrator': {
                     'available': self.automation_orchestrator is not None,
                     'data_extraction_support': True,
-                    'phone_extraction_support': True,  # 🆕
-                    'state_configuration_support': True  # 🆕
+                    'phone_extraction_support': True,
+                    'state_configuration_support': True
                 },
                 'credentials_manager': {
                     'available': self.credentials_manager is not None,
                     'crypto_available': self.credentials_manager.is_crypto_available()
                 },
-                'state_config_manager': {  # 🆕
+                'state_config_manager': {
                     'available': self.state_config_manager is not None,
                     'config_exists': self.state_config_manager.config_exists(),
                     'valid_states': list(self.state_config_manager.get_valid_states().keys())
@@ -747,9 +747,9 @@ class AutomationService:
             try:
                 base_status['data_extraction'] = {
                     'available': self.is_data_extraction_available(),
-                    'phone_support': self.is_phone_extraction_available(),  # 🆕
+                    'phone_support': self.is_phone_extraction_available(),
                     'last_file': self.last_extraction_file,
-                    'last_phone_count': self.last_phone_count,  # 🆕
+                    'last_phone_count': self.last_phone_count,
                     'export_directory': self.get_export_directory()
                 }
             except Exception as e:
@@ -759,7 +759,7 @@ class AutomationService:
                     'error': str(e)
                 }
 
-            # 🆕 Estado de configuración de estado
+            # Estado de configuración de estado
             try:
                 current_config = self.get_current_state_config()
                 base_status['state_configuration'] = {
@@ -781,10 +781,10 @@ class AutomationService:
             self._log(f"Error obteniendo estado de handlers: {e}", "WARNING")
             return {'error': str(e)}
 
-    # 🆕 MÉTODOS PÚBLICOS ADICIONALES PARA FUNCIONALIDAD COMPLETA
+    # MÉTODOS PÚBLICOS ADICIONALES PARA FUNCIONALIDAD COMPLETA
 
     def get_phone_extraction_summary(self):
-        """🆕 Obtiene resumen de la última extracción de teléfonos"""
+        """Obtiene resumen de la última extracción de teléfonos"""
         try:
             return {
                 'last_extraction_file': self.last_extraction_file,
@@ -800,7 +800,7 @@ class AutomationService:
             }
 
     def get_state_configuration_summary(self):
-        """🆕 Obtiene resumen de la configuración de estado"""
+        """🆕 Obtiene resumen de la configuración de estado expandida"""
         try:
             current_config = self.get_current_state_config()
             return {
@@ -819,7 +819,7 @@ class AutomationService:
             }
 
     def force_phone_extraction_test(self):
-        """🆕 Fuerza una prueba de la funcionalidad de teléfonos"""
+        """Fuerza una prueba de la funcionalidad de teléfonos"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa para probar"
