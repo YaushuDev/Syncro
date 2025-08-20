@@ -2,17 +2,17 @@
 # Ubicación: /syncro_bot/gui/components/automation/handlers/automation_orchestrator.py
 """
 Coordinador central del flujo completo de automatización con funcionalidad
-avanzada de extracción de teléfonos y configuración de estado. Orquesta la
+avanzada de extracción de números de serie y configuración de estado. Orquesta la
 secuencia completa incluyendo doble clic en clientes para extraer números de
-teléfono, configuración de estado (PENDIENTE/FINALIZADO/FINALIZADO_67_PLUS) y generar reportes
-Excel completos con toda la información.
+serie de equipos, configuración de estado (PENDIENTE/FINALIZADO/FINALIZADO_67_PLUS)
+y generar reportes Excel completos con toda la información.
 """
 
 import time
 
 
 class AutomationOrchestrator:
-    """Coordinador central con funcionalidad completa de extracción de datos, teléfonos y estado configurable"""
+    """Coordinador central con funcionalidad completa de extracción de datos, números de serie y estado configurable"""
 
     def __init__(self, web_driver_manager, login_handler, dropdown_handler,
                  date_handler, button_handler, logger=None):
@@ -23,7 +23,7 @@ class AutomationOrchestrator:
         self.button_handler = button_handler
         self.logger = logger
 
-        # Handlers para extracción completa con teléfonos
+        # Handlers para extracción completa con números de serie
         self.data_extractor = None
         self.excel_exporter = None
 
@@ -34,7 +34,7 @@ class AutomationOrchestrator:
         self._initialize_data_handlers()
 
     def _initialize_data_handlers(self):
-        """Inicializa los handlers de extracción con soporte para teléfonos"""
+        """Inicializa los handlers de extracción con soporte para números de serie"""
         try:
             # Importar y crear handlers de datos actualizados
             from .data_extractor import DataExtractor
@@ -47,7 +47,7 @@ class AutomationOrchestrator:
 
             self.excel_exporter = ExcelExporter(logger=self._log)
 
-            self._log("🔧 Handlers de extracción con teléfonos inicializados")
+            self._log("🔧 Handlers de extracción con números de serie inicializados")
 
         except ImportError as e:
             self._log(f"❌ Error importando handlers de datos: {str(e)}", "ERROR")
@@ -79,11 +79,11 @@ class AutomationOrchestrator:
         4. Configuración de fechas
         5. Botón de pestaña
         6. TRIPLE CLIC en botón de búsqueda
-        7. EXTRACCIÓN COMPLETA con teléfonos (doble clic en cada cliente)
-        8. EXPORTACIÓN A EXCEL con teléfonos y formato especial
+        7. EXTRACCIÓN COMPLETA con números de serie (doble clic en cada cliente)
+        8. EXPORTACIÓN A EXCEL con números de serie y formato especial
         """
         try:
-            self._log("🚀 Iniciando flujo completo con extracción avanzada de teléfonos y estado configurable...")
+            self._log("🚀 Iniciando flujo completo con extracción avanzada de números de serie y estado configurable...")
 
             # Procesar configuración de estado
             selected_state = self._process_state_config(state_config)
@@ -118,14 +118,14 @@ class AutomationOrchestrator:
                 self._log(f"Advertencia en configuración de fechas: {date_message}", "WARNING")
                 return True, f"Login y dropdowns completados. {date_message}"
 
-            # PASO 6: TRIPLE CLIC Y EXTRACCIÓN COMPLETA CON TELÉFONOS
+            # PASO 6: TRIPLE CLIC Y EXTRACCIÓN COMPLETA CON NÚMEROS DE SERIE
             extraction_success, extraction_message, excel_file = self._execute_complete_data_extraction_flow(driver)
             if not extraction_success:
                 self._log(f"Error en extracción completa: {extraction_message}", "ERROR")
                 return True, f"Automatización completada pero sin extracción de datos. {extraction_message}"
 
-            # ✅ PROCESO COMPLETO EXITOSO CON TELÉFONOS Y ESTADO
-            final_message = f"🎉 Automatización completa exitosa: Login, dropdowns (Estado: {selected_state}), fechas, extracción con teléfonos y Excel generado."
+            # ✅ PROCESO COMPLETO EXITOSO CON NÚMEROS DE SERIE Y ESTADO
+            final_message = f"🎉 Automatización completa exitosa: Login, dropdowns (Estado: {selected_state}), fechas, extracción con números de serie y Excel generado."
             if excel_file:
                 final_message += f" Archivo Excel: {excel_file}"
             if date_config and not date_config.get('skip_dates', True):
@@ -161,9 +161,9 @@ class AutomationOrchestrator:
             return "PENDIENTE"
 
     def _execute_complete_data_extraction_flow(self, driver):
-        """Ejecuta el flujo completo: triple clic, extracción con teléfonos y Excel"""
+        """Ejecuta el flujo completo: triple clic, extracción con números de serie y Excel"""
         try:
-            self._log("📊 Iniciando flujo completo de extracción con teléfonos...")
+            self._log("📊 Iniciando flujo completo de extracción con números de serie...")
 
             # Verificar que los handlers estén disponibles
             if not self.data_extractor or not self.excel_exporter:
@@ -182,8 +182,8 @@ class AutomationOrchestrator:
 
             self._log(f"✅ Triple clic completado: {triple_click_message}")
 
-            # EXTRACCIÓN COMPLETA DE DATOS CON TELÉFONOS
-            self._log("📋📞 Extrayendo datos completos incluyendo teléfonos (con doble clic)...")
+            # EXTRACCIÓN COMPLETA DE DATOS CON NÚMEROS DE SERIE
+            self._log("📋🔢 Extrayendo datos completos incluyendo números de serie (con doble clic)...")
             extraction_success, extraction_message, extracted_data = self.data_extractor.extract_table_data(driver)
 
             if not extraction_success:
@@ -194,36 +194,36 @@ class AutomationOrchestrator:
 
             self._log(f"✅ Datos completos extraídos: {len(extracted_data)} registros")
 
-            # ANÁLISIS DE TELÉFONOS EXTRAÍDOS
-            phones_extracted = 0
-            phone_errors = 0
+            # ANÁLISIS DE NÚMEROS DE SERIE EXTRAÍDOS
+            series_extracted = 0
+            series_errors = 0
             for record in extracted_data:
-                phone = record.get('telefono_cliente', '')
-                if phone and phone not in ['Sin celda cliente', 'Error en doble clic', 'Campo no encontrado',
-                                           'Error extracción', 'Error popup', 'Campo vacío', 'Sin teléfono', 'Error']:
-                    phones_extracted += 1
+                numero_serie = record.get('numero_serie', '')
+                if numero_serie and numero_serie not in ['Sin número de serie', 'Error en doble clic', 'Campo no encontrado',
+                                           'Error extracción', 'Error popup', 'Campo vacío', 'Sin número de serie', 'Error']:
+                    series_extracted += 1
                 else:
-                    phone_errors += 1
+                    series_errors += 1
 
-            self._log(f"📞 Análisis de teléfonos: {phones_extracted} extraídos, {phone_errors} errores")
+            self._log(f"🔢 Análisis de números de serie: {series_extracted} extraídos, {series_errors} errores")
 
             # VALIDACIÓN de los datos extraídos
             validation_success, validation_message = self.data_extractor.validate_extracted_data(extracted_data)
             if not validation_success:
                 self._log(f"⚠️ Advertencia en validación: {validation_message}", "WARNING")
 
-            # RESUMEN de extracción (incluyendo estadísticas de teléfonos)
+            # RESUMEN de extracción (incluyendo estadísticas de números de serie)
             summary_info = self.data_extractor.get_extraction_summary(extracted_data)
 
-            # Actualizar resumen con estadísticas específicas de teléfonos
-            summary_info['phones_extracted'] = phones_extracted
-            summary_info['phone_errors'] = phone_errors
+            # Actualizar resumen con estadísticas específicas de números de serie
+            summary_info['series_extracted'] = series_extracted
+            summary_info['series_errors'] = series_errors
 
             self._log(
-                f"📊 Resumen completo: {summary_info.get('valid_records', 0)} registros válidos, {phones_extracted} teléfonos extraídos")
+                f"📊 Resumen completo: {summary_info.get('valid_records', 0)} registros válidos, {series_extracted} números de serie extraídos")
 
-            # EXPORTACIÓN A EXCEL CON FORMATO ESPECIAL PARA TELÉFONOS
-            self._log("📄 Creando archivo Excel con teléfonos y formato especial...")
+            # EXPORTACIÓN A EXCEL CON FORMATO ESPECIAL PARA NÚMEROS DE SERIE
+            self._log("📄 Creando archivo Excel con números de serie y formato especial...")
             excel_success, excel_message, excel_filepath = self.excel_exporter.export_with_summary(
                 extracted_data, summary_info
             )
@@ -238,7 +238,7 @@ class AutomationOrchestrator:
             else:
                 self._log(f"⚠️ Advertencia validando Excel: {validation_message}", "WARNING")
 
-            success_message = f"Extracción completa: {len(extracted_data)} registros con {phones_extracted} teléfonos → {excel_filepath}"
+            success_message = f"Extracción completa: {len(extracted_data)} registros con {series_extracted} números de serie → {excel_filepath}"
             return True, success_message, excel_filepath
 
         except Exception as e:
@@ -393,9 +393,9 @@ class AutomationOrchestrator:
             return False, error_msg
 
     def test_automation_components(self, username, password, date_config=None, state_config=None):
-        """🆕 Prueba todos los componentes incluyendo funcionalidad de teléfonos y estado configurable expandido"""
+        """🆕 Prueba todos los componentes incluyendo funcionalidad de números de serie y estado configurable expandido"""
         try:
-            self._log("🧪 Iniciando prueba completa de componentes con teléfonos y estado...")
+            self._log("🧪 Iniciando prueba completa de componentes con números de serie y estado...")
 
             # Procesar configuración de estado
             selected_state = self._process_state_config(state_config)
@@ -410,7 +410,7 @@ class AutomationOrchestrator:
                 'date_fields': False,
                 'button_fields': False,
                 'data_extraction': False,
-                'phone_extraction': False,
+                'serie_extraction': False,  # Cambiado de phone_extraction
                 'excel_export': False
             }
 
@@ -467,18 +467,18 @@ class AutomationOrchestrator:
                             if results['data_extraction']:
                                 self._log("✅ Extracción de datos: OK")
 
-                                # Test 9: Funcionalidad de teléfonos
-                                results['phone_extraction'] = stats.get('phone_extraction_available', False)
-                                if results['phone_extraction']:
-                                    self._log("✅ Extracción de teléfonos: OK")
+                                # Test 9: Funcionalidad de números de serie
+                                results['serie_extraction'] = stats.get('serie_extraction_available', False)  # Cambiado
+                                if results['serie_extraction']:
+                                    self._log("✅ Extracción de números de serie: OK")
 
                         # Test 10: Exportación Excel
                         if self.excel_exporter:
                             export_info = self.excel_exporter.get_export_info()
                             results['excel_export'] = export_info.get('available', False) and export_info.get(
-                                'phone_support', False)
+                                'serie_support', False)  # Cambiado de phone_support
                             if results['excel_export']:
-                                self._log("✅ Exportación Excel con teléfonos: OK")
+                                self._log("✅ Exportación Excel con números de serie: OK")
 
                 # Limpiar
                 self.web_driver_manager.cleanup_driver()
@@ -488,7 +488,7 @@ class AutomationOrchestrator:
             total_tests = len(results)
 
             if passed_tests == total_tests:
-                return True, f"Todos los componentes funcionan correctamente incluyendo teléfonos y estado ({passed_tests}/{total_tests})"
+                return True, f"Todos los componentes funcionan correctamente incluyendo números de serie y estado ({passed_tests}/{total_tests})"
             else:
                 failed_tests = [test for test, result in results.items() if not result]
                 return False, f"Algunos componentes fallaron ({passed_tests}/{total_tests}). Fallidos: {', '.join(failed_tests)}"
@@ -499,7 +499,7 @@ class AutomationOrchestrator:
             return False, error_msg
 
     def get_automation_status(self, driver):
-        """Obtiene el estado completo incluyendo funcionalidad de teléfonos y estado"""
+        """Obtiene el estado completo incluyendo funcionalidad de números de serie y estado"""
         try:
             if not driver or not self.web_driver_manager.is_driver_active():
                 return {
@@ -535,12 +535,12 @@ class AutomationOrchestrator:
             button_states = self.button_handler.get_button_states(driver)
             status['button_states'] = button_states
 
-            # Estado de extracción con teléfonos
+            # Estado de extracción con números de serie
             if self.data_extractor:
                 table_stats = self.data_extractor.get_table_statistics(driver)
                 status['table_stats'] = table_stats
 
-            # Estado de exportación con soporte para teléfonos
+            # Estado de exportación con soporte para números de serie
             if self.excel_exporter:
                 export_info = self.excel_exporter.get_export_info()
                 status['export_info'] = export_info
@@ -595,7 +595,7 @@ class AutomationOrchestrator:
                     # Para extracción de datos completa, manejar el retorno especial
                     success, message, excel_file = step_function()
                     if success:
-                        executed_steps.append(f"{step_name} (Excel con teléfonos: {excel_file})")
+                        executed_steps.append(f"{step_name} (Excel con números de serie: {excel_file})")  # Cambiado
                     else:
                         return False, f"Error en paso {step_name}: {message}"
                 elif step_name == 'remaining_dropdowns':
@@ -631,7 +631,7 @@ class AutomationOrchestrator:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    # MÉTODOS PÚBLICOS PARA EXTRACCIÓN COMPLETA CON TELÉFONOS Y ESTADO
+    # MÉTODOS PÚBLICOS PARA EXTRACCIÓN COMPLETA CON NÚMEROS DE SERIE Y ESTADO
 
     def extract_data_only(self, driver):
         """Ejecuta solo la extracción completa (asume que ya se ejecutó el flujo)"""
@@ -647,7 +647,7 @@ class AutomationOrchestrator:
             return False, error_msg, None
 
     def extract_basic_data_only(self, driver):
-        """Extrae solo datos básicos sin teléfonos (más rápido)"""
+        """Extrae solo datos básicos sin números de serie (más rápido)"""
         try:
             if not self.data_extractor or not self.excel_exporter:
                 return False, "Handlers de extracción no disponibles", None
@@ -685,8 +685,8 @@ class AutomationOrchestrator:
             if stats.get('error'):
                 return False, f"Error en estadísticas: {stats['error']}"
 
-            phone_support = stats.get('phone_extraction_available', False)
-            return True, f"Extracción disponible: {stats.get('total_rows', 0)} filas detectadas, soporte teléfonos: {phone_support}"
+            serie_support = stats.get('serie_extraction_available', False)  # Cambiado
+            return True, f"Extracción disponible: {stats.get('total_rows', 0)} filas detectadas, soporte números de serie: {serie_support}"
 
         except Exception as e:
             return False, f"Error probando extracción: {str(e)}"

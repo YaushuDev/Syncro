@@ -4,8 +4,9 @@
 Pestaña de automatización refactorizada para Syncro Bot con configuración de fechas
 y estado. Coordina todos los componentes de automatización: credenciales, configuración
 de fechas, configuración de estado (PENDIENTE/FINALIZADO/FINALIZADO_67_PLUS), servicio,
-UI y logging. Mantiene la interfaz limpia y maneja la comunicación entre componentes y
-la integración con el sistema de registro.
+UI y logging. Incluye extracción de números de serie de equipos mediante lectura de
+tablas HTML dentro de popups (sin OCR). Mantiene la interfaz limpia y maneja la
+comunicación entre componentes.
 """
 
 import tkinter as tk
@@ -25,7 +26,7 @@ from ..components.automation.automation_logger import AutomationLoggerFactory, L
 
 
 class AutomationTab:
-    """Pestaña de automatización refactorizada con componentes modulares, configuración de fechas y estado expandido"""
+    """Pestaña de automatización refactorizada con componentes modulares, configuración de fechas y estado expandido, y extracción de números de serie"""
 
     def __init__(self, parent_notebook):
         self.parent = parent_notebook
@@ -59,7 +60,7 @@ class AutomationTab:
         self._setup_initial_state()
 
     def _initialize_components(self):
-        """Inicializa los componentes principales"""
+        """Inicializa los componentes principales con soporte para extracción de números de serie"""
         # Crear logger con callback para UI
         self.logger = AutomationLoggerFactory.create_ui_logger(
             ui_callback=self._log_to_ui
@@ -395,11 +396,18 @@ class AutomationTab:
         # Agregar mensajes iniciales al log
         self.logger.info("🚀 Sistema de automatización con login automático, configuración de fechas y estado iniciado")
         self.logger.info("🔧 Configuración: Esperas robustas, detección inteligente, fechas y estado configurables")
+        self.logger.info("🔢 Extracción avanzada de números de serie mediante lectura de tablas HTML")
 
         if self.automation_service.is_selenium_available():
             self.logger.info("✅ Selenium disponible - Login automático, configuración de fechas y estado habilitados")
         else:
             self.logger.warning("⚠️ Selenium no disponible - Solo modo navegador básico")
+
+        # Verificar disponibilidad de extracción de números de serie
+        if self.automation_service.is_serie_extraction_available():
+            self.logger.info("🔢 Extracción de números de serie disponible - Lectura directa de tablas HTML")
+        else:
+            self.logger.warning("⚠️ Extracción de números de serie no disponible")
 
         # Mostrar estado inicial de fechas y estado
         self._log_date_config_status()
@@ -714,7 +722,8 @@ class AutomationTab:
     def _clear_state_config(self):
         """Limpia configuración de estado (vuelve a por defecto)"""
         try:
-            if messagebox.askyesno("Confirmar", "¿Restablecer configuración de estado a valores por defecto (PENDIENTE)?"):
+            if messagebox.askyesno("Confirmar",
+                                   "¿Restablecer configuración de estado a valores por defecto (PENDIENTE)?"):
                 success, message = self.state_config_manager.clear_config()
                 if success:
                     self.state_var.set('PENDIENTE')
@@ -725,7 +734,7 @@ class AutomationTab:
         except Exception as e:
             self.logger.error(f"❌ Error restableciendo configuración de estado: {e}")
 
-    # MÉTODOS EXISTENTES DE CREDENCIALES (sin cambios)
+    # MÉTODOS EXISTENTES DE CREDENCIALES
 
     def _test_credentials(self):
         """Prueba las credenciales usando componentes"""
@@ -759,7 +768,8 @@ class AutomationTab:
                 date_config = self._get_date_config_for_automation()
                 state_config = self._get_state_config_for_automation()
 
-                success, message = self.automation_service.test_credentials(username, password, date_config, state_config)
+                success, message = self.automation_service.test_credentials(username, password, date_config,
+                                                                            state_config)
                 self.frame.after(0, lambda: self._handle_test_credentials_result(success, message))
             except Exception as e:
                 self.frame.after(0, lambda: self._handle_test_credentials_result(False, str(e)))
@@ -869,7 +879,7 @@ class AutomationTab:
                             profile_name += " + Estado: 📺 67 Plus"
                         else:
                             profile_name += f" + Estado: {selected_state}"
-                        profile_name += ")"
+                        profile_name += " + Números de Serie)"
 
                         self.current_execution_record = self.registry_tab.add_execution_record(
                             start_time=self.execution_start_time,
@@ -898,7 +908,7 @@ class AutomationTab:
         threading.Thread(target=start_thread, daemon=True).start()
 
     def _handle_start_result(self, success, message):
-        """🆕 Maneja el resultado del inicio de automatización incluyendo estado expandido"""
+        """🆕 Maneja el resultado del inicio de automatización incluyendo estado expandido y números de serie"""
         if self._is_closing:
             return
 
@@ -910,16 +920,28 @@ class AutomationTab:
 
             self.logger.log_automation_end(True, {'message': message})
 
+            # Obtener información de números de serie si está disponible
+            serie_count = self.automation_service.get_last_serie_count()
+            last_file = self.automation_service.get_last_extraction_file()
+
             display_message = f"{message}\n\n"
             if self.automation_service.is_selenium_available():
                 display_message += "🎯 Características avanzadas activas:\n"
                 display_message += "• Login automático completado\n"
                 display_message += "• Configuración de fechas aplicada\n"
                 display_message += "• Configuración de estado aplicada\n"
+                display_message += "• Extracción de números de serie mediante lectura de tablas HTML\n"
                 display_message += "• Esperas robustas implementadas\n"
                 display_message += "• Detección inteligente de carga\n"
-                display_message += "• Navegador controlado automáticamente\n\n"
-                display_message += "💡 El navegador permanecerá abierto para continuar la automatización."
+                display_message += "• Navegador controlado automáticamente\n"
+
+                if serie_count > 0:
+                    display_message += f"• {serie_count} números de serie extraídos exitosamente\n"
+
+                if last_file:
+                    display_message += f"• Archivo Excel generado: {last_file}\n"
+
+                display_message += "\n💡 El navegador permanecerá abierto para continuar la automatización."
             else:
                 display_message += "La página web se ha abierto en su navegador (modo básico)."
 
@@ -952,13 +974,23 @@ class AutomationTab:
                 self.control_panel.set_button_text('start_button', '▶️ Iniciar Automatización con Login')
                 self.control_panel.set_button_state('pause_button', 'disabled')
 
-                self.logger.info("Automatización pausada exitosamente")
+                # Obtener estadísticas finales de números de serie
+                serie_count = self.automation_service.get_last_serie_count()
+                last_file = self.automation_service.get_last_extraction_file()
+
+                final_message = "Automatización pausada exitosamente"
+                if serie_count > 0:
+                    final_message += f"\n\n🔢 Números de serie extraídos: {serie_count}"
+                if last_file:
+                    final_message += f"\n📄 Archivo Excel: {last_file}"
+
+                self.logger.info(final_message)
 
                 # Actualizar registro como exitoso
                 self._update_execution_record("Exitoso", "")
 
                 if not self._is_closing:
-                    messagebox.showinfo("Éxito", message)
+                    messagebox.showinfo("Éxito", final_message)
             else:
                 self.status_panel.update_automation_status("Error", self.theme.colors['error'])
                 self.logger.error(f"Error al pausar: {message}")
@@ -980,10 +1012,19 @@ class AutomationTab:
                 messagebox.showerror("Error", f"Error al pausar automatización:\n{error_msg}")
 
     def _update_execution_record(self, status, error_message):
-        """Actualiza el registro de ejecución"""
+        """Actualiza el registro de ejecución con información de números de serie"""
         if self.registry_tab and self.current_execution_record:
             try:
                 end_time = datetime.now()
+
+                # Agregar información de números de serie al mensaje
+                serie_count = self.automation_service.get_last_serie_count()
+                if status == "Exitoso" and serie_count > 0:
+                    if error_message:
+                        error_message += f" | {serie_count} números de serie extraídos"
+                    else:
+                        error_message = f"{serie_count} números de serie extraídos"
+
                 self.registry_tab.update_execution_record(
                     record_id=self.current_execution_record['id'],
                     end_time=end_time,
@@ -1073,6 +1114,81 @@ class AutomationTab:
             self.logger.error(f"❌ Excepción aplicando preset: {e}")
             return False
 
+    # MÉTODOS PÚBLICOS PARA EXTRACCIÓN DE NÚMEROS DE SERIE
+
+    def get_serie_extraction_status(self):
+        """Obtiene el estado actual de extracción de números de serie"""
+        try:
+            return {
+                'available': self.automation_service.is_serie_extraction_available(),
+                'last_count': self.automation_service.get_last_serie_count(),
+                'last_file': self.automation_service.get_last_extraction_file(),
+                'extraction_method': 'HTML Table Reading'
+            }
+        except Exception as e:
+            self.logger.warning(f"Error obteniendo estado de números de serie: {e}")
+            return {
+                'available': False,
+                'error': str(e)
+            }
+
+    def test_serie_extraction(self):
+        """Prueba la funcionalidad de extracción de números de serie"""
+        try:
+            if not self.automation_service.get_status():
+                messagebox.showwarning("Automatización No Activa",
+                                       "Debe iniciar la automatización primero para probar la extracción de números de serie")
+                return False
+
+            success, message = self.automation_service.test_data_extraction()
+
+            if success:
+                self.logger.info(f"✅ Prueba de extracción de números de serie exitosa: {message}")
+                messagebox.showinfo("Prueba Exitosa", f"Funcionalidad de números de serie disponible:\n\n{message}")
+            else:
+                self.logger.error(f"❌ Prueba de extracción falló: {message}")
+                messagebox.showerror("Prueba Fallida", f"Error en funcionalidad de números de serie:\n\n{message}")
+
+            return success
+        except Exception as e:
+            error_msg = f"Error probando extracción de números de serie: {str(e)}"
+            self.logger.error(error_msg)
+            messagebox.showerror("Error", error_msg)
+            return False
+
+    def extract_serie_data_manual(self):
+        """Ejecuta extracción manual de números de serie"""
+        try:
+            if not self.automation_service.get_status():
+                messagebox.showwarning("Automatización No Activa",
+                                       "Debe iniciar la automatización primero para extraer números de serie")
+                return False
+
+            self.logger.info("🔢 Iniciando extracción manual de números de serie...")
+
+            success, message, excel_file = self.automation_service.extract_data_with_series()
+
+            if success:
+                serie_count = self.automation_service.get_last_serie_count()
+                final_message = f"Extracción completada exitosamente\n\n"
+                final_message += f"📊 {message}\n"
+                final_message += f"🔢 Números de serie extraídos: {serie_count}\n"
+                if excel_file:
+                    final_message += f"📄 Archivo Excel: {excel_file}"
+
+                self.logger.info(f"✅ Extracción manual exitosa: {serie_count} números de serie")
+                messagebox.showinfo("Extracción Exitosa", final_message)
+            else:
+                self.logger.error(f"❌ Extracción manual falló: {message}")
+                messagebox.showerror("Error en Extracción", f"Error extrayendo números de serie:\n\n{message}")
+
+            return success
+        except Exception as e:
+            error_msg = f"Error en extracción manual: {str(e)}"
+            self.logger.error(error_msg)
+            messagebox.showerror("Error", error_msg)
+            return False
+
     def cleanup(self):
         """Limpia recursos al cerrar la pestaña"""
         self._is_closing = True
@@ -1089,11 +1205,18 @@ class AutomationTab:
         if self.registry_tab and self.current_execution_record:
             try:
                 end_time = datetime.now()
+
+                # Incluir información de números de serie en el mensaje de interrupción
+                serie_count = self.automation_service.get_last_serie_count()
+                interruption_message = "Ejecución interrumpida por cierre de aplicación"
+                if serie_count > 0:
+                    interruption_message += f" | {serie_count} números de serie extraídos antes de la interrupción"
+
                 self.registry_tab.update_execution_record(
                     record_id=self.current_execution_record['id'],
                     end_time=end_time,
                     status="Fallido",
-                    error_message="Ejecución interrumpida por cierre de aplicación"
+                    error_message=interruption_message
                 )
                 self.logger.info("Registro actualizado: Ejecución interrumpida")
             except Exception as e:

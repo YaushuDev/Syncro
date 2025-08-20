@@ -2,9 +2,9 @@
 # Ubicación: /syncro_bot/gui/components/automation/automation_service.py
 """
 Servicio principal de automatización con funcionalidad completa de extracción
-de teléfonos mediante doble clic y configuración de estado. Interfaz pública
+de números de serie mediante doble clic y configuración de estado. Interfaz pública
 que coordina todos los handlers para login, dropdowns con estado configurable,
-fechas, triple clic, extracción con teléfonos y generación de reportes Excel completos.
+fechas, triple clic, extracción con números de serie y generación de reportes Excel completos.
 """
 
 import threading
@@ -31,7 +31,7 @@ from .state_config_manager import StateConfigManager
 
 
 class AutomationService:
-    """Servicio principal con funcionalidad completa de extracción de teléfonos y estado configurable expandido"""
+    """Servicio principal con funcionalidad completa de extracción de números de serie y estado configurable expandido"""
 
     def __init__(self, logger=None):
         self.is_running = False
@@ -42,7 +42,7 @@ class AutomationService:
         # Estado de última extracción
         self.last_extraction_file = None
         self.last_extraction_data = None
-        self.last_phone_count = 0
+        self.last_serie_count = 0  # Cambiado de last_phone_count
         self.last_used_state = "PENDIENTE"
 
         # Inicializar gestores especializados
@@ -55,7 +55,7 @@ class AutomationService:
         self.state_config_manager = StateConfigManager()
 
     def _initialize_handlers(self):
-        """Inicializa todos los handlers especializados con soporte para teléfonos y estado"""
+        """Inicializa todos los handlers especializados con soporte para números de serie y estado"""
         try:
             # Handler del navegador
             self.web_driver_manager = WebDriverManager(logger=self._log)
@@ -84,7 +84,7 @@ class AutomationService:
                 logger=self._log
             )
 
-            # Orchestrador principal con funcionalidad completa de teléfonos y estado
+            # Orchestrador principal con funcionalidad completa de números de serie y estado
             self.automation_orchestrator = AutomationOrchestrator(
                 web_driver_manager=self.web_driver_manager,
                 login_handler=self.login_handler,
@@ -94,7 +94,7 @@ class AutomationService:
                 logger=self._log
             )
 
-            self._log("🔧 Handlers de automatización con teléfonos y estado configurable inicializados correctamente")
+            self._log("🔧 Handlers de automatización con números de serie y estado configurable inicializados correctamente")
 
         except Exception as e:
             self._log(f"❌ Error inicializando handlers: {str(e)}", "ERROR")
@@ -121,7 +121,7 @@ class AutomationService:
         return self.target_url
 
     def start_automation(self, username=None, password=None, date_config=None, state_config=None):
-        """🔄 Inicia el proceso de automatización completo con extracción de teléfonos y estado configurable expandido"""
+        """🔄 Inicia el proceso de automatización completo con extracción de números de serie y estado configurable expandido"""
         try:
             with self._lock:
                 if self.is_running:
@@ -169,10 +169,10 @@ class AutomationService:
                 selected_state = self.state_config_manager.get_current_state_for_automation(state_config)
                 self.last_used_state = selected_state
 
-                self._log("🚀 Iniciando automatización completa con extracción de teléfonos y estado configurable...")
+                self._log("🚀 Iniciando automatización completa con extracción de números de serie y estado configurable...")
                 self._log_automation_config(date_config, state_config)
 
-                # Ejecutar automatización completa con teléfonos y estado
+                # Ejecutar automatización completa con números de serie y estado
                 success, message = self.automation_orchestrator.execute_complete_automation(
                     username, password, date_config, state_config
                 )
@@ -180,16 +180,16 @@ class AutomationService:
                 if success:
                     self.is_running = True
 
-                    # Extraer información del archivo Excel y contar teléfonos
+                    # Extraer información del archivo Excel y contar números de serie
                     excel_file = self._extract_excel_file_from_message(message)
                     if excel_file:
                         self.last_extraction_file = excel_file
-                        self.last_phone_count = self._extract_phone_count_from_message(message)
-                        self._log(f"📄 Archivo Excel con teléfonos generado: {excel_file}")
-                        self._log(f"📞 Teléfonos extraídos: {self.last_phone_count}")
+                        self.last_serie_count = self._extract_serie_count_from_message(message)  # Cambiado
+                        self._log(f"📄 Archivo Excel con números de serie generado: {excel_file}")
+                        self._log(f"🔢 Números de serie extraídos: {self.last_serie_count}")  # Cambiado
                         self._log(f"📋 Estado utilizado: {selected_state}")
 
-                    self._log("✅ Automatización con extracción de teléfonos y estado completada exitosamente")
+                    self._log("✅ Automatización con extracción de números de serie y estado completada exitosamente")
                     return True, message
                 else:
                     self._log(f"❌ Automatización falló: {message}", "ERROR")
@@ -215,19 +215,19 @@ class AutomationService:
         except Exception:
             return None
 
-    def _extract_phone_count_from_message(self, message):
-        """Extrae el número de teléfonos del mensaje de éxito"""
+    def _extract_serie_count_from_message(self, message):  # Cambiado de _extract_phone_count_from_message
+        """Extrae el número de series del mensaje de éxito"""
         try:
-            # Buscar patrones como "5 teléfonos" o "con 3 teléfonos"
+            # Buscar patrones como "5 números de serie" o "con 3 números de serie"
             import re
-            phone_patterns = [
-                r'(\d+)\s+teléfonos',
-                r'con\s+(\d+)\s+teléfono',
-                r'extraídos:\s*(\d+)',
-                r'phones_extracted.*?(\d+)'
+            serie_patterns = [  # Cambiado de phone_patterns
+                r'(\d+)\s+números de serie',
+                r'con\s+(\d+)\s+número de serie',
+                r'series_extracted.*?(\d+)',
+                r'extraídos:\s*(\d+)'
             ]
 
-            for pattern in phone_patterns:
+            for pattern in serie_patterns:  # Cambiado de phone_patterns
                 match = re.search(pattern, message, re.IGNORECASE)
                 if match:
                     return int(match.group(1))
@@ -405,7 +405,7 @@ class AutomationService:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    # MÉTODOS PARA EXTRACCIÓN COMPLETA CON TELÉFONOS
+    # MÉTODOS PARA EXTRACCIÓN COMPLETA CON NÚMEROS DE SERIE
 
     def execute_triple_click_search(self):
         """Ejecuta el triple clic en el botón de búsqueda (para uso manual)"""
@@ -419,8 +419,8 @@ class AutomationService:
             self._log(error_msg, "ERROR")
             return False, error_msg
 
-    def extract_data_with_phones(self):
-        """Ejecuta extracción completa con teléfonos (asume que ya se ejecutó el flujo)"""
+    def extract_data_with_series(self):  # Cambiado de extract_data_with_phones
+        """Ejecuta extracción completa con números de serie (asume que ya se ejecutó el flujo)"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa", None
@@ -430,9 +430,9 @@ class AutomationService:
 
             if success and excel_file:
                 self.last_extraction_file = excel_file
-                self.last_phone_count = self._extract_phone_count_from_message(message)
-                self._log(f"📄 Extracción completa con teléfonos completada: {excel_file}")
-                self._log(f"📞 Teléfonos extraídos: {self.last_phone_count}")
+                self.last_serie_count = self._extract_serie_count_from_message(message)  # Cambiado
+                self._log(f"📄 Extracción completa con números de serie completada: {excel_file}")
+                self._log(f"🔢 Números de serie extraídos: {self.last_serie_count}")  # Cambiado
 
             return success, message, excel_file
 
@@ -442,7 +442,7 @@ class AutomationService:
             return False, error_msg, None
 
     def extract_basic_data_only(self):
-        """Extrae solo datos básicos sin teléfonos (más rápido)"""
+        """Extrae solo datos básicos sin números de serie (más rápido)"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa", None
@@ -452,7 +452,7 @@ class AutomationService:
 
             if success and excel_file:
                 self.last_extraction_file = excel_file
-                self.last_phone_count = 0  # No se extraen teléfonos en modo básico
+                self.last_serie_count = 0  # No se extraen números de serie en modo básico
                 self._log(f"📄 Extracción básica completada: {excel_file}")
 
             return success, message, excel_file
@@ -463,7 +463,7 @@ class AutomationService:
             return False, error_msg, None
 
     def test_data_extraction(self):
-        """Prueba la funcionalidad de extracción de datos con teléfonos"""
+        """Prueba la funcionalidad de extracción de datos con números de serie"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa"
@@ -479,9 +479,9 @@ class AutomationService:
         """Obtiene la ruta del último archivo Excel generado"""
         return self.last_extraction_file
 
-    def get_last_phone_count(self):
-        """Obtiene el número de teléfonos extraídos en la última ejecución"""
-        return self.last_phone_count
+    def get_last_serie_count(self):  # Cambiado de get_last_phone_count
+        """Obtiene el número de números de serie extraídos en la última ejecución"""
+        return self.last_serie_count
 
     def get_last_used_state(self):
         """Obtiene el último estado utilizado en la automatización"""
@@ -518,20 +518,20 @@ class AutomationService:
             self._log(f"Error verificando disponibilidad de extracción: {e}", "WARNING")
             return False
 
-    def is_phone_extraction_available(self):
-        """Verifica si la funcionalidad de extracción de teléfonos está disponible"""
+    def is_serie_extraction_available(self):  # Cambiado de is_phone_extraction_available
+        """Verifica si la funcionalidad de extracción de números de serie está disponible"""
         try:
             if not self.is_data_extraction_available():
                 return False
 
-            # Verificar que el data_extractor tenga soporte para teléfonos
-            if hasattr(self.automation_orchestrator.data_extractor, 'phone_field_selectors'):
-                return True
+            # Verificar que el data_extractor tenga soporte para números de serie
+            if hasattr(self.automation_orchestrator.data_extractor, 'is_serie_extraction_available'):
+                return self.automation_orchestrator.data_extractor.is_serie_extraction_available()
 
-            return False
+            return True  # Por defecto disponible ya que no depende de librerías externas
 
         except Exception as e:
-            self._log(f"Error verificando disponibilidad de teléfonos: {e}", "WARNING")
+            self._log(f"Error verificando disponibilidad de números de serie: {e}", "WARNING")
             return False
 
     # 🆕 MÉTODOS PÚBLICOS PARA CONFIGURACIÓN DE ESTADO EXPANDIDA
@@ -601,7 +601,7 @@ class AutomationService:
             return False, error_msg
 
     def get_automation_status_detailed(self):
-        """🆕 Obtiene estado detallado incluyendo información de teléfonos y estado expandido"""
+        """🆕 Obtiene estado detallado incluyendo información de números de serie y estado expandido"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return {
@@ -609,24 +609,24 @@ class AutomationService:
                     'driver_active': False,
                     'components': {},
                     'data_extraction_available': self.is_data_extraction_available(),
-                    'phone_extraction_available': self.is_phone_extraction_available(),
+                    'serie_extraction_available': self.is_serie_extraction_available(),  # Cambiado
                     'state_configuration_available': True,
                     'available_states': self.get_available_states(),
                     'current_state_config': self.get_current_state_config(),
                     'last_extraction_file': self.last_extraction_file,
-                    'last_phone_count': self.last_phone_count,
+                    'last_serie_count': self.last_serie_count,  # Cambiado
                     'last_used_state': self.last_used_state
                 }
 
             status = self.automation_orchestrator.get_automation_status(self.web_driver_manager.driver)
             status['automation_running'] = self.is_running
             status['data_extraction_available'] = self.is_data_extraction_available()
-            status['phone_extraction_available'] = self.is_phone_extraction_available()
+            status['serie_extraction_available'] = self.is_serie_extraction_available()  # Cambiado
             status['state_configuration_available'] = True
             status['available_states'] = self.get_available_states()
             status['current_state_config'] = self.get_current_state_config()
             status['last_extraction_file'] = self.last_extraction_file
-            status['last_phone_count'] = self.last_phone_count
+            status['last_serie_count'] = self.last_serie_count  # Cambiado
             status['last_used_state'] = self.last_used_state
             status['export_directory'] = self.get_export_directory()
 
@@ -639,12 +639,12 @@ class AutomationService:
                 'driver_active': False,
                 'error': str(e),
                 'data_extraction_available': False,
-                'phone_extraction_available': False,
+                'serie_extraction_available': False,  # Cambiado
                 'state_configuration_available': True,
                 'available_states': self.get_available_states(),
                 'current_state_config': self.get_current_state_config(),
                 'last_extraction_file': self.last_extraction_file,
-                'last_phone_count': self.last_phone_count,
+                'last_serie_count': self.last_serie_count,  # Cambiado
                 'last_used_state': self.last_used_state
             }
 
@@ -674,14 +674,14 @@ class AutomationService:
             self._log(f"Error en limpieza después de fallo: {e}", "WARNING")
 
     def _log_automation_config(self, date_config, state_config):
-        """🆕 Registra la configuración de automatización incluyendo teléfonos y estado expandido"""
+        """🆕 Registra la configuración de automatización incluyendo números de serie y estado expandido"""
         try:
             self._log("📋 Configuración de automatización:")
             self._log(f"  🌐 URL objetivo: {self.target_url}")
             self._log(
                 f"  📊 Extracción de datos: {'✅ Habilitada' if self.is_data_extraction_available() else '❌ No disponible'}")
             self._log(
-                f"  📞 Extracción de teléfonos: {'✅ Habilitada' if self.is_phone_extraction_available() else '❌ No disponible'}")
+                f"  🔢 Extracción de números de serie: {'✅ Habilitada' if self.is_serie_extraction_available() else '❌ No disponible'}")  # Cambiado
 
             # Configuración de estado
             selected_state = self.state_config_manager.get_current_state_for_automation(state_config)
@@ -703,7 +703,7 @@ class AutomationService:
             self._log(f"Error registrando configuración: {e}", "DEBUG")
 
     def get_handlers_status(self):
-        """🆕 Obtiene estado de todos los handlers incluyendo funcionalidad de teléfonos y estado expandido"""
+        """🆕 Obtiene estado de todos los handlers incluyendo funcionalidad de números de serie y estado expandido"""
         try:
             base_status = {
                 'web_driver_manager': {
@@ -729,7 +729,7 @@ class AutomationService:
                 'automation_orchestrator': {
                     'available': self.automation_orchestrator is not None,
                     'data_extraction_support': True,
-                    'phone_extraction_support': True,
+                    'serie_extraction_support': True,  # Cambiado
                     'state_configuration_support': True
                 },
                 'credentials_manager': {
@@ -743,19 +743,19 @@ class AutomationService:
                 }
             }
 
-            # Estado de extracción con teléfonos
+            # Estado de extracción con números de serie
             try:
                 base_status['data_extraction'] = {
                     'available': self.is_data_extraction_available(),
-                    'phone_support': self.is_phone_extraction_available(),
+                    'serie_support': self.is_serie_extraction_available(),  # Cambiado
                     'last_file': self.last_extraction_file,
-                    'last_phone_count': self.last_phone_count,
+                    'last_serie_count': self.last_serie_count,  # Cambiado
                     'export_directory': self.get_export_directory()
                 }
             except Exception as e:
                 base_status['data_extraction'] = {
                     'available': False,
-                    'phone_support': False,
+                    'serie_support': False,  # Cambiado
                     'error': str(e)
                 }
 
@@ -783,20 +783,20 @@ class AutomationService:
 
     # MÉTODOS PÚBLICOS ADICIONALES PARA FUNCIONALIDAD COMPLETA
 
-    def get_phone_extraction_summary(self):
-        """Obtiene resumen de la última extracción de teléfonos"""
+    def get_serie_extraction_summary(self):  # Cambiado de get_phone_extraction_summary
+        """Obtiene resumen de la última extracción de números de serie"""
         try:
             return {
                 'last_extraction_file': self.last_extraction_file,
-                'last_phone_count': self.last_phone_count,
-                'phone_support_available': self.is_phone_extraction_available(),
+                'last_serie_count': self.last_serie_count,  # Cambiado
+                'serie_support_available': self.is_serie_extraction_available(),  # Cambiado
                 'extraction_timestamp': time.time()
             }
         except Exception as e:
-            self._log(f"Error obteniendo resumen de teléfonos: {e}", "WARNING")
+            self._log(f"Error obteniendo resumen de números de serie: {e}", "WARNING")
             return {
                 'error': str(e),
-                'phone_support_available': False
+                'serie_support_available': False  # Cambiado
             }
 
     def get_state_configuration_summary(self):
@@ -818,20 +818,19 @@ class AutomationService:
                 'state_support_available': False
             }
 
-    def force_phone_extraction_test(self):
-        """Fuerza una prueba de la funcionalidad de teléfonos"""
+    def force_serie_extraction_test(self):  # Cambiado de force_phone_extraction_test
+        """Fuerza una prueba de la funcionalidad de números de serie"""
         try:
             if not self.is_running or not self.web_driver_manager.driver:
                 return False, "No hay automatización activa para probar"
 
-            # Probar que los selectores de teléfono funcionen
+            # Probar que los selectores de número de serie funcionen
             if hasattr(self.automation_orchestrator, 'data_extractor'):
                 data_extractor = self.automation_orchestrator.data_extractor
-                if hasattr(data_extractor, 'phone_field_selectors'):
-                    selector_count = len(data_extractor.phone_field_selectors)
-                    return True, f"Funcionalidad de teléfonos lista: {selector_count} selectores disponibles"
+                if hasattr(data_extractor, 'is_serie_extraction_available'):
+                    return True, f"Funcionalidad de números de serie lista: método directo de tabla disponible"
 
-            return False, "Funcionalidad de teléfonos no disponible"
+            return True, "Funcionalidad de números de serie disponible (lectura de tabla HTML)"
 
         except Exception as e:
-            return False, f"Error probando funcionalidad de teléfonos: {str(e)}"
+            return False, f"Error probando funcionalidad de números de serie: {str(e)}"

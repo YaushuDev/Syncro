@@ -2,8 +2,8 @@
 # Ubicación: /syncro_bot/gui/components/automation/handlers/excel_exporter.py
 """
 Exportador especializado de datos a archivos Excel con soporte para números
-de teléfono y fecha de creación. Maneja la creación de archivos Excel con
-formato profesional incluyendo todas las columnas extraídas mediante OCR.
+de serie de equipos y fecha de creación. Maneja la creación de archivos Excel con
+formato profesional incluyendo todas las columnas extraídas.
 """
 
 import os
@@ -25,7 +25,7 @@ except ImportError:
 
 
 class ExcelExporter:
-    """Exportador especializado de datos a archivos Excel con soporte para teléfonos y fecha creación"""
+    """Exportador especializado de datos a archivos Excel con soporte para números de serie y fecha creación"""
 
     def __init__(self, logger=None):
         self.logger = logger
@@ -34,26 +34,26 @@ class ExcelExporter:
         self.default_filename = "datos_extraidos_syncro_bot"
         self.output_directory = "reportes_excel"
 
-        # 🆕 Mapeo de nombres de columnas actualizado con fecha creación
+        # Mapeo de nombres de columnas actualizado con número de serie
         self.column_headers = {
             'fila_numero': 'Fila #',
             'numero_orden': 'Número de Orden',
             'cliente': 'Cliente',
-            'telefono_cliente': 'Teléfono Cliente',
+            'numero_serie': 'Número de Serie',  # Cambiado de telefono_cliente
             'tecnico': 'Técnico',
             'distrito': 'Distrito',
             'barrio': 'Barrio',
             'canton': 'Cantón',
-            'fecha_creacion': 'Fecha Creación',  # 🆕 Nueva columna
+            'fecha_creacion': 'Fecha Creación',
             'observaciones': 'Observaciones',
             'estado': 'Estado',
             'despacho': 'Despacho'
         }
 
-        # 🆕 Orden preferido de columnas actualizado con fecha creación
+        # Orden preferido de columnas actualizado con número de serie
         self.column_order = [
-            'fila_numero', 'numero_orden', 'cliente', 'telefono_cliente',
-            'tecnico', 'distrito', 'barrio', 'canton', 'fecha_creacion',  # Fecha después de ubicación
+            'fila_numero', 'numero_orden', 'cliente', 'numero_serie',  # numero_serie en lugar de telefono_cliente
+            'tecnico', 'distrito', 'barrio', 'canton', 'fecha_creacion',
             'estado', 'despacho', 'observaciones'
         ]
 
@@ -69,7 +69,7 @@ class ExcelExporter:
         return OPENPYXL_AVAILABLE
 
     def export_to_excel(self, data: List[Dict], filename: Optional[str] = None) -> tuple[bool, str, str]:
-        """Exporta datos a archivo Excel con formato profesional incluyendo teléfonos y fecha creación"""
+        """Exporta datos a archivo Excel con formato profesional incluyendo números de serie y fecha creación"""
         try:
             if not OPENPYXL_AVAILABLE:
                 return False, "openpyxl no está disponible", ""
@@ -80,20 +80,20 @@ class ExcelExporter:
             # 🔍 DEBUG: Verificar datos recibidos
             self._log(f"🔍 DEBUG: Recibidos {len(data)} registros para exportar")
 
-            # Contar registros con teléfono y fecha
-            phones_count = 0
+            # Contar registros con número de serie y fecha
+            series_count = 0
             dates_count = 0
             for record in data:
-                phone = record.get('telefono_cliente', '')
-                if phone and phone not in ['Sin teléfono', 'Error OCR', 'Error popup', 'OCR no disponible']:
-                    phones_count += 1
+                numero_serie = record.get('numero_serie', '')
+                if numero_serie and numero_serie not in ['Sin número de serie', 'Error extracción', 'Error popup', 'Campo no encontrado']:
+                    series_count += 1
 
                 fecha = record.get('fecha_creacion', '')
                 if fecha and fecha.strip():
                     dates_count += 1
 
-            self._log(f"📞 {phones_count} registros con teléfono de {len(data)} totales")
-            self._log(f"📅 {dates_count} registros con fecha creación de {len(data)} totales")
+            self._log(f"🔢 {series_count} registros con número de serie de {len(data)} totales")
+            self._log(f"📅 {dates_count} registros with fecha creación de {len(data)} totales")
 
             # Preparar directorio de salida
             if not os.path.exists(self.output_directory):
@@ -129,7 +129,7 @@ class ExcelExporter:
             # Verificar que el archivo se creó correctamente
             if os.path.exists(filepath):
                 file_size = os.path.getsize(filepath)
-                success_message = f"Excel creado: {len(data)} registros exportados ({phones_count} con teléfono, {dates_count} con fecha, {file_size} bytes)"
+                success_message = f"Excel creado: {len(data)} registros exportados ({series_count} con número de serie, {dates_count} con fecha, {file_size} bytes)"
                 return True, success_message, filepath
             else:
                 return False, "Archivo no se creó correctamente", ""
@@ -140,7 +140,7 @@ class ExcelExporter:
             return False, error_msg, ""
 
     def _setup_worksheet(self, worksheet, data: List[Dict]) -> bool:
-        """Configura el worksheet con datos y formato incluyendo teléfonos y fecha creación"""
+        """Configura el worksheet con datos y formato incluyendo números de serie y fecha creación"""
         try:
             # 🔍 DEBUG: Verificar datos en setup
             self._log(f"🔍 DEBUG: Configurando worksheet con {len(data)} registros")
@@ -170,7 +170,7 @@ class ExcelExporter:
             if rows_inserted > 0:
                 self._create_table(worksheet, rows_inserted, columns_to_include)
 
-            # Ajustar ancho de columnas (incluyendo teléfono y fecha)
+            # Ajustar ancho de columnas (incluyendo número de serie y fecha)
             self._adjust_column_widths(worksheet, columns_to_include)
 
             return True
@@ -180,7 +180,7 @@ class ExcelExporter:
             return False
 
     def _determine_columns_improved(self, data: List[Dict]) -> List[str]:
-        """🔧 Determina qué columnas incluir dando prioridad al teléfono y fecha creación"""
+        """🔧 Determina qué columnas incluir dando prioridad al número de serie y fecha creación"""
         if not data:
             self._log("⚠️ No hay datos para determinar columnas", "WARNING")
             return []
@@ -202,22 +202,23 @@ class ExcelExporter:
                 columns_with_data.append(col)
                 self._log(f"✅ Columna obligatoria incluida: {col}")
 
-        # 🆕 VERIFICAR TELÉFONO ESPECÍFICAMENTE
-        if 'telefono_cliente' in all_columns:
-            # Verificar si hay teléfonos válidos
-            valid_phones = 0
+        # 🆕 VERIFICAR NÚMERO DE SERIE ESPECÍFICAMENTE
+        if 'numero_serie' in all_columns:
+            # Verificar si hay números de serie válidos
+            valid_series = 0
             for record in data:
-                phone = record.get('telefono_cliente', '')
-                if phone and phone not in ['Sin teléfono', 'Error OCR', 'Error popup', 'OCR no disponible', '']:
-                    valid_phones += 1
+                numero_serie = record.get('numero_serie', '')
+                if numero_serie and numero_serie not in ['Sin número de serie', 'Error extracción', 'Error popup',
+                                                        'Campo no encontrado', 'Error lectura popup', 'Sin tabla popup', '']:
+                    valid_series += 1
 
-            if valid_phones > 0:
-                columns_with_data.append('telefono_cliente')
-                self._log(f"📞 ✅ Columna teléfono incluida: {valid_phones} teléfonos válidos")
+            if valid_series > 0:
+                columns_with_data.append('numero_serie')
+                self._log(f"🔢 ✅ Columna número de serie incluida: {valid_series} números de serie válidos")
             else:
-                self._log(f"📞 ⚠️ Columna teléfono omitida: sin teléfonos válidos")
+                self._log(f"🔢 ⚠️ Columna número de serie omitida: sin números de serie válidos")
 
-        # 🆕 VERIFICAR FECHA CREACIÓN ESPECÍFICAMENTE
+        # VERIFICAR FECHA CREACIÓN ESPECÍFICAMENTE
         if 'fecha_creacion' in all_columns:
             # Verificar si hay fechas válidas
             valid_dates = 0
@@ -316,8 +317,8 @@ class ExcelExporter:
                 raw_value = record.get(column, '')
 
                 # Procesamiento específico por tipo de columna
-                if column == 'telefono_cliente':
-                    processed_value = self._process_phone_value(raw_value)
+                if column == 'numero_serie':
+                    processed_value = self._process_serie_value(raw_value)
                 elif column == 'fecha_creacion':
                     processed_value = self._process_date_value(raw_value)
                 else:
@@ -326,17 +327,14 @@ class ExcelExporter:
                 # Asignar valor a la celda
                 cell.value = processed_value
 
-                # 🎨 Sin estilos especiales - formato uniforme para todas las celdas
-                # (Solo bordes y alineación se aplicarán en _apply_formatting)
-
                 # Verificar si esta fila tiene al menos un dato significativo
                 if processed_value and str(processed_value).strip():
                     row_has_data = True
 
                 # 🔍 DEBUG: Log para las primeras filas
                 if row_index <= 3:
-                    if column == 'telefono_cliente':
-                        self._log(f"📞 DEBUG: Fila {row_index}, Teléfono: '{raw_value}' → '{processed_value}'")
+                    if column == 'numero_serie':
+                        self._log(f"🔢 DEBUG: Fila {row_index}, Número Serie: '{raw_value}' → '{processed_value}'")
                     elif column == 'fecha_creacion':
                         self._log(f"📅 DEBUG: Fila {row_index}, Fecha: '{raw_value}' → '{processed_value}'")
                     elif column in ['numero_orden', 'cliente']:
@@ -350,32 +348,32 @@ class ExcelExporter:
         self._log(f"📊 Proceso completado: {rows_inserted} filas con datos de {len(data)} totales")
         return rows_inserted
 
-    def _process_phone_value(self, raw_value):
-        """🆕 Procesa específicamente valores de teléfono"""
+    def _process_serie_value(self, raw_value):
+        """🆕 Procesa específicamente valores de número de serie"""
         if not raw_value:
-            return "Sin teléfono"
+            return "Sin número de serie"
 
         str_value = str(raw_value).strip()
 
-        # Casos de error específicos de teléfono
+        # Casos de error específicos de número de serie
         error_cases = [
-            'Sin teléfono', 'Error OCR', 'Error popup', 'Error captura',
-            'Error análisis', 'OCR no disponible', 'none', 'null'
+            'Sin número de serie', 'Error extracción', 'Error popup', 'Error lectura popup',
+            'Sin tabla popup', 'Campo no encontrado', 'none', 'null'
         ]
 
         if str_value.lower() in [case.lower() for case in error_cases]:
             return "Error"
 
-        # Limpiar el teléfono
+        # Limpiar el número de serie
         cleaned = str_value.replace('&nbsp;', ' ')
         cleaned = cleaned.replace('\xa0', ' ')
         cleaned = cleaned.replace('\u00a0', ' ')
         cleaned = ' '.join(cleaned.split())
 
-        return cleaned if cleaned else "Sin teléfono"
+        return cleaned if cleaned else "Sin número de serie"
 
     def _process_date_value(self, raw_value):
-        """🆕 Procesa específicamente valores de fecha creación"""
+        """Procesa específicamente valores de fecha creación"""
         if not raw_value:
             return "Sin fecha"
 
@@ -492,7 +490,7 @@ class ExcelExporter:
                     width = 18
                 elif column == 'cliente':
                     width = 25
-                elif column == 'telefono_cliente':
+                elif column == 'numero_serie':  # Cambiado de telefono_cliente
                     width = 20
                 elif column == 'fecha_creacion':
                     width = 18
@@ -527,10 +525,10 @@ class ExcelExporter:
                 ("Fecha de extracción:", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                 ("Total de registros:", len(data)),
                 ("Registros válidos:", summary_info.get('valid_records', 0)),
-                ("Teléfonos extraídos:", summary_info.get('phones_extracted', 0)),
+                ("Números de serie extraídos:", summary_info.get('series_extracted', 0)),  # Cambiado
                 ("Fechas creación extraídas:", self._count_valid_dates(data)),
-                ("Errores de teléfono:", summary_info.get('phone_errors', 0)),
-                ("Método OCR usado:", summary_info.get('ocr_method_used', 'N/A')),
+                ("Errores de número de serie:", summary_info.get('series_errors', 0)),  # Cambiado
+                ("Método de extracción:", summary_info.get('extraction_method', 'N/A')),  # Cambiado
                 ("Campos extraídos:", ', '.join(summary_info.get('fields_extracted', []))),
             ]
 
@@ -543,14 +541,14 @@ class ExcelExporter:
                 row += 1
 
             # Estadísticas de tasa de éxito
-            if summary_info.get('phones_extracted', 0) > 0:
+            if summary_info.get('series_extracted', 0) > 0:  # Cambiado
                 row += 1
-                summary_sheet[f'A{row}'] = "Tasa de éxito de teléfonos:"
+                summary_sheet[f'A{row}'] = "Tasa de éxito de números de serie:"  # Cambiado
                 summary_sheet[f'A{row}'].font = Font(bold=True)
 
-                total_attempts = summary_info.get('phones_extracted', 0) + summary_info.get('phone_errors', 0)
+                total_attempts = summary_info.get('series_extracted', 0) + summary_info.get('series_errors', 0)  # Cambiado
                 success_rate = (
-                        summary_info.get('phones_extracted', 0) / total_attempts * 100) if total_attempts > 0 else 0
+                        summary_info.get('series_extracted', 0) / total_attempts * 100) if total_attempts > 0 else 0  # Cambiado
                 summary_sheet[f'B{row}'] = f"{success_rate:.1f}%"
                 row += 1
 
@@ -576,7 +574,7 @@ class ExcelExporter:
             self._log(f"⚠️ Error creando resumen: {str(e)}", "WARNING")
 
     def _count_valid_dates(self, data: List[Dict]) -> int:
-        """🆕 Cuenta las fechas de creación válidas"""
+        """Cuenta las fechas de creación válidas"""
         try:
             valid_dates = 0
             for record in data:
@@ -598,10 +596,10 @@ class ExcelExporter:
                 return False, "No hay datos para exportar", ""
 
             # 🔍 DEBUG: Verificar datos antes de exportar
-            phones_count = summary_info.get('phones_extracted', 0)
+            series_count = summary_info.get('series_extracted', 0)  # Cambiado
             dates_count = self._count_valid_dates(data)
             self._log(
-                f"🔍 DEBUG: Exportando con resumen - {len(data)} registros, {phones_count} teléfonos, {dates_count} fechas")
+                f"🔍 DEBUG: Exportando con resumen - {len(data)} registros, {series_count} números de serie, {dates_count} fechas")
 
             # Preparar archivo
             if not os.path.exists(self.output_directory):
@@ -635,7 +633,7 @@ class ExcelExporter:
 
             if os.path.exists(filepath):
                 file_size = os.path.getsize(filepath)
-                success_message = f"Excel con resumen creado: {len(data)} registros, {phones_count} teléfonos, {dates_count} fechas ({file_size} bytes)"
+                success_message = f"Excel con resumen creado: {len(data)} registros, {series_count} números de serie, {dates_count} fechas ({file_size} bytes)"
                 self._log(f"✅ {success_message}")
                 return True, success_message, filepath
             else:
@@ -647,7 +645,7 @@ class ExcelExporter:
             return False, error_msg, ""
 
     def validate_excel_file(self, filepath: str) -> tuple[bool, str]:
-        """Valida que el archivo Excel se creó correctamente incluyendo teléfonos y fechas"""
+        """Valida que el archivo Excel se creó correctamente incluyendo números de serie y fechas"""
         try:
             if not os.path.exists(filepath):
                 return False, "Archivo no existe"
@@ -666,12 +664,12 @@ class ExcelExporter:
                 return False, "Archivo no tiene headers válidos"
 
             # 🆕 Verificar columnas especiales
-            has_phone_column = any('Teléfono' in str(val) for val in first_row_values if val)
+            has_serie_column = any('Número de Serie' in str(val) for val in first_row_values if val)  # Cambiado
             has_date_column = any('Fecha Creación' in str(val) for val in first_row_values if val)
 
             # Verificar que hay datos en las celdas
             data_cells_found = 0
-            phone_cells_found = 0
+            serie_cells_found = 0  # Cambiado
             date_cells_found = 0
 
             for row in range(2, min(worksheet.max_row + 1, 5)):  # Verificar primeras filas
@@ -683,8 +681,8 @@ class ExcelExporter:
                         # 🆕 Contar celdas especiales
                         header_value = worksheet.cell(row=1, column=col).value
                         if header_value:
-                            if 'Teléfono' in str(header_value):
-                                phone_cells_found += 1
+                            if 'Número de Serie' in str(header_value):  # Cambiado
+                                serie_cells_found += 1
                             elif 'Fecha Creación' in str(header_value):
                                 date_cells_found += 1
 
@@ -694,8 +692,8 @@ class ExcelExporter:
 
             if data_cells_found > 0:
                 validation_msg = f"Archivo válido ({file_size} bytes, {worksheet.max_row - 1} registros, {data_cells_found} celdas con datos"
-                if has_phone_column:
-                    validation_msg += f", columna teléfono incluida con {phone_cells_found} valores"
+                if has_serie_column:  # Cambiado
+                    validation_msg += f", columna número de serie incluida con {serie_cells_found} valores"
                 if has_date_column:
                     validation_msg += f", columna fecha creación incluida con {date_cells_found} valores"
                 validation_msg += ")"
@@ -707,14 +705,14 @@ class ExcelExporter:
             return False, f"Error validando archivo: {str(e)}"
 
     def get_export_info(self) -> Dict:
-        """Obtiene información sobre el exportador incluyendo soporte para teléfonos y fechas"""
+        """Obtiene información sobre el exportador incluyendo soporte para números de serie y fechas"""
         return {
             'available': OPENPYXL_AVAILABLE,
             'output_directory': self.output_directory,
             'supported_formats': ['xlsx'],
             'default_filename': self.default_filename,
             'column_headers': self.column_headers,
-            'phone_support': True,
-            'date_support': True,  # 🆕
+            'serie_support': True,  # Cambiado de phone_support
+            'date_support': True,
             'special_formatting': True
         }
