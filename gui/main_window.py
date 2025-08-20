@@ -1,10 +1,9 @@
 # main_window.py
 # Ubicación: /syncro_bot/gui/main_window.py
 """
-Ventana principal de Syncro Bot con scheduler automático integrado para reportes y ejecución programada.
-Gestiona la configuración de la ventana, pestañas, conexiones entre componentes,
-el scheduler automático para envío programado de reportes Excel por correo,
-y el scheduler de ejecución automática del bot en horarios programados.
+Ventana principal de Syncro Bot con scheduler automático integrado para reportes.
+Gestiona la configuración de la ventana, pestañas, conexiones entre componentes
+y el scheduler automático para envío programado de reportes Excel por correo.
 """
 
 from tkinter import ttk
@@ -13,7 +12,6 @@ from .tabs.automation_tab import AutomationTab
 from .tabs.email_tab import EmailTab
 from .tabs.profiles_tab import ProfilesTab
 from .tabs.registro_tab import RegistroTab
-from .tabs.schedule_tab import ScheduleTab
 from .components.profile_execution_service import ProfileScheduler
 
 
@@ -55,26 +53,22 @@ class MainWindow:
         print("  → Creando AutomationTab...")
         self.automation_tab = AutomationTab(self.notebook)
 
-        # 2. Nueva pestaña de Programación de Ejecución
-        print("  → Creando ScheduleTab...")
-        self.schedule_tab = ScheduleTab(self.notebook)
-
-        # 3. Pestaña de Perfiles (programación automática de reportes)
+        # 2. Pestaña de Perfiles (programación automática de reportes)
         print("  → Creando ProfilesTab...")
         self.profiles_tab = ProfilesTab(self.notebook)
 
-        # 4. Pestaña de Email (configuración de envío)
+        # 3. Pestaña de Email (configuración de envío)
         print("  → Creando EmailTab...")
         self.email_tab = EmailTab(self.notebook)
 
-        # 5. Pestaña de Registro (logging y reportes)
+        # 4. Pestaña de Registro (logging y reportes)
         print("  → Creando RegistroTab...")
         self.registro_tab = RegistroTab(self.notebook)
 
         print("✅ Todas las pestañas creadas exitosamente")
 
     def setup_integrations(self):
-        """CORREGIDO: Configura las integraciones entre pestañas"""
+        """Configura las integraciones entre pestañas"""
         print("Configurando integraciones entre pestañas...")
 
         try:
@@ -85,28 +79,14 @@ class MainWindow:
             else:
                 print("  ❌ Error: AutomationTab o RegistroTab no disponibles")
 
-            # 2. CORREGIDO: Conectar ScheduleTab primero con AutomationTab
-            if hasattr(self, 'schedule_tab') and hasattr(self, 'automation_tab'):
-                self.schedule_tab.set_automation_tab(self.automation_tab)
-                print("  ✅ ScheduleTab → AutomationTab conectado")
-            else:
-                print("  ❌ Error: ScheduleTab o AutomationTab no disponibles")
-
-            # 3.Luego conectar ScheduleTab con RegistroTab (esto activará el scheduler)
-            if hasattr(self, 'schedule_tab') and hasattr(self, 'registro_tab'):
-                self.schedule_tab.set_registry_tab(self.registro_tab)
-                print("  ✅ ScheduleTab → RegistroTab conectado (Sistema de programación activado)")
-            else:
-                print("  ❌ Error: ScheduleTab o RegistroTab no disponibles")
-
-            # 4. Conectar ProfilesTab con RegistroTab (para logging de envíos de reportes)
+            # 2. Conectar ProfilesTab con RegistroTab (para logging de envíos de reportes)
             if hasattr(self, 'profiles_tab') and hasattr(self, 'registro_tab'):
                 self.profiles_tab.set_registry_tab(self.registro_tab)
                 print("  ✅ ProfilesTab → RegistroTab conectado")
             else:
                 print("  ❌ Error: ProfilesTab o RegistroTab no disponibles")
 
-            # 5. Conectar RegistroTab con EmailTab (para envío de reportes)
+            # 3. Conectar RegistroTab con EmailTab (para envío de reportes)
             if hasattr(self, 'registro_tab') and hasattr(self, 'email_tab'):
                 self.registro_tab.set_email_tab(self.email_tab)
                 print("  ✅ RegistroTab → EmailTab conectado")
@@ -165,17 +145,6 @@ class MainWindow:
                 print("  ✅ AutomationTab.registry_tab configurado")
             else:
                 print("  ⚠️ AutomationTab.registry_tab no configurado")
-
-            # Verificar que ScheduleTab tiene referencias correctas
-            if hasattr(self.schedule_tab, 'automation_tab') and self.schedule_tab.automation_tab:
-                print("  ✅ ScheduleTab.automation_tab configurado")
-            else:
-                print("  ⚠️ ScheduleTab.automation_tab no configurado")
-
-            if hasattr(self.schedule_tab, 'registry_tab') and self.schedule_tab.registry_tab:
-                print("  ✅ ScheduleTab.registry_tab configurado")
-            else:
-                print("  ⚠️ ScheduleTab.registry_tab no configurado")
 
             # Verificar que ProfilesTab tiene referencia a RegistroTab
             if hasattr(self.profiles_tab, 'registry_tab') and self.profiles_tab.registry_tab:
@@ -246,16 +215,6 @@ class MainWindow:
                 except Exception as e:
                     print(f"    ⚠️ Error limpiando AutomationTab: {e}")
 
-            # Limpiar pestaña de programación
-            if hasattr(self, 'schedule_tab') and self.schedule_tab:
-                print("  → Limpiando ScheduleTab (programación automática)...")
-                try:
-                    if hasattr(self.schedule_tab, 'cleanup'):
-                        self.schedule_tab.cleanup()
-                    print("    ✅ ScheduleTab limpiado")
-                except Exception as e:
-                    print(f"    ⚠️ Error limpiando ScheduleTab: {e}")
-
             # Limpiar pestaña de perfiles de reportes
             if hasattr(self, 'profiles_tab') and self.profiles_tab:
                 print("  → Limpiando ProfilesTab (reportes)...")
@@ -312,14 +271,10 @@ class MainWindow:
             except:
                 print("⚠️ Error cerrando ventana, forzando salida...")
 
-    # ===== MÉTODOS PÚBLICOS MEJORADOS =====
+    # ===== MÉTODOS PÚBLICOS =====
     def get_automation_tab(self):
         """Retorna la instancia de la pestaña de automatización"""
         return self.automation_tab if hasattr(self, 'automation_tab') else None
-
-    def get_schedule_tab(self):
-        """Retorna la instancia de la pestaña de programación"""
-        return self.schedule_tab if hasattr(self, 'schedule_tab') else None
 
     def get_profiles_tab(self):
         """Retorna la instancia de la pestaña de perfiles de reportes"""
@@ -378,7 +333,6 @@ class MainWindow:
             # Verificar que todas las pestañas estén disponibles
             tabs_ready = all([
                 hasattr(self, 'automation_tab') and self.automation_tab,
-                hasattr(self, 'schedule_tab') and self.schedule_tab,
                 hasattr(self, 'profiles_tab') and self.profiles_tab,
                 hasattr(self, 'email_tab') and self.email_tab,
                 hasattr(self, 'registro_tab') and self.registro_tab
@@ -387,17 +341,12 @@ class MainWindow:
             # Verificar que las integraciones estén configuradas
             integrations_ready = all([
                 hasattr(self.automation_tab, 'registry_tab') and self.automation_tab.registry_tab,
-                hasattr(self.schedule_tab, 'automation_tab') and self.schedule_tab.automation_tab,
-                hasattr(self.schedule_tab, 'registry_tab') and self.schedule_tab.registry_tab,
                 hasattr(self.profiles_tab, 'registry_tab') and self.profiles_tab.registry_tab,
                 hasattr(self.registro_tab, 'email_tab') and self.registro_tab.email_tab
             ])
 
-            # Verificar schedulers
+            # Verificar scheduler de reportes
             report_scheduler_ready = self.profile_scheduler is not None and self.profile_scheduler.is_running
-            bot_scheduler_ready = (hasattr(self.schedule_tab, 'bot_scheduler') and
-                                 self.schedule_tab.bot_scheduler and
-                                 self.schedule_tab.bot_scheduler.is_running)
 
             return tabs_ready and integrations_ready and report_scheduler_ready
 
@@ -411,11 +360,9 @@ class MainWindow:
                 'automation_running': False,
                 'email_configured': False,
                 'active_report_profiles': 0,
-                'active_schedules': 0,
                 'total_records': 0,
                 'integrations_ready': False,
-                'report_scheduler_running': False,
-                'bot_scheduler_running': False
+                'report_scheduler_running': False
             }
 
             # Estado de automatización
@@ -431,11 +378,6 @@ class MainWindow:
                 active_profiles = self.profiles_tab.get_active_profiles()
                 status['active_report_profiles'] = len(active_profiles)
 
-            # Programaciones activas
-            if hasattr(self, 'schedule_tab') and self.schedule_tab:
-                active_schedules = self.schedule_tab.get_active_schedules()
-                status['active_schedules'] = len(active_schedules)
-
             # Total de registros
             if hasattr(self, 'registro_tab') and self.registro_tab:
                 all_records = self.registro_tab.registry_manager.get_all_records()
@@ -446,11 +388,6 @@ class MainWindow:
 
             # Estado de scheduler de reportes
             status['report_scheduler_running'] = bool(self.profile_scheduler and self.profile_scheduler.is_running)
-
-            # Estado del bot scheduler
-            if hasattr(self, 'schedule_tab') and self.schedule_tab:
-                scheduler_status = self.schedule_tab.get_scheduler_status()
-                status['bot_scheduler_running'] = scheduler_status.get('running', False)
 
             return status
 
@@ -495,11 +432,9 @@ class MainWindow:
                 print(f"🔧 Sistema integrado: {'✅ Sí' if status['integrations_ready'] else '❌ No'}")
                 print(f"📧 Email configurado: {'✅ Sí' if status['email_configured'] else '❌ No'}")
                 print(f"📊 Perfiles de reportes activos: {status['active_report_profiles']}")
-                print(f"⏰ Programaciones de ejecución activas: {status['active_schedules']}")
                 print(f"📋 Registros totales: {status['total_records']}")
                 print(f"🤖 Automatización: {'🟢 Activa' if status['automation_running'] else '🟠 Inactiva'}")
                 print(f"📧 Scheduler de Reportes: {'🟢 Ejecutándose' if status['report_scheduler_running'] else '🔴 Detenido'}")
-                print(f"⏰ Scheduler de Ejecución: {'🟢 Ejecutándose' if status['bot_scheduler_running'] else '🔴 Detenido'}")
             else:
                 print("⚠️ No se pudo obtener el estado del sistema")
 
@@ -507,18 +442,11 @@ class MainWindow:
             print("✅ Syncro Bot iniciado correctamente")
             print("💡 Utilice las pestañas para configurar y gestionar el sistema")
 
-            # Información de schedulers
+            # Información de scheduler de reportes
             if self.profile_scheduler and self.profile_scheduler.is_running:
                 print("📧 Los perfiles de reportes se enviarán automáticamente por correo")
             else:
                 print("⚠️ Scheduler de reportes no está funcionando")
-
-            if hasattr(self, 'schedule_tab') and self.schedule_tab:
-                scheduler_status = self.schedule_tab.get_scheduler_status()
-                if scheduler_status.get('running', False):
-                    print("🤖 El bot se ejecutará automáticamente según programaciones")
-                else:
-                    print("⚠️ Scheduler de ejecución automática no está funcionando")
 
             print("=" * 70 + "\n")
 
@@ -539,17 +467,6 @@ class MainWindow:
             print(f"Error obteniendo próximos reportes programados: {e}")
             return []
 
-    def get_next_scheduled_executions(self, limit=5):
-        """Obtiene información de las próximas ejecuciones automáticas del bot"""
-        if not hasattr(self, 'schedule_tab') or not self.schedule_tab or not self.schedule_tab.bot_scheduler:
-            return []
-
-        try:
-            return self.schedule_tab.bot_scheduler.get_next_scheduled_executions(limit)
-        except Exception as e:
-            print(f"Error obteniendo próximas ejecuciones automáticas: {e}")
-            return []
-
     def get_report_execution_history(self, limit=10):
         """Obtiene historial de ejecuciones de reportes"""
         if not self.profile_scheduler:
@@ -559,15 +476,4 @@ class MainWindow:
             return self.profile_scheduler.get_execution_history(limit)
         except Exception as e:
             print(f"Error obteniendo historial de reportes: {e}")
-            return []
-
-    def get_bot_execution_history(self, limit=10):
-        """Obtiene historial de ejecuciones automáticas del bot"""
-        if not hasattr(self, 'schedule_tab') or not self.schedule_tab or not self.schedule_tab.bot_scheduler:
-            return []
-
-        try:
-            return self.schedule_tab.bot_scheduler.get_execution_history(limit)
-        except Exception as e:
-            print(f"Error obteniendo historial de ejecuciones automáticas: {e}")
             return []
